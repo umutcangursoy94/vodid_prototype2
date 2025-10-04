@@ -2,9 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:vodid_prototype2/generic_list_screen.dart';
-import 'package:vodid_prototype2/today_polls_screen.dart';
-import 'package:vodid_prototype2/user_profile_screen.dart';
+import 'package:vodid_prototype2/features/home/generic_list_screen.dart';
+import 'package:vodid_prototype2/features/polls/presentation/today_polls_screen.dart';
+import 'package:vodid_prototype2/features/profile/user_profile_screen.dart';
 
 class MyVotesScreen extends StatelessWidget {
   const MyVotesScreen({super.key});

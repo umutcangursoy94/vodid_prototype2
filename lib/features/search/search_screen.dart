@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/today_polls_screen.dart';
-import 'package:vodid_prototype2/user_profile_screen.dart';
+import 'package:vodid_prototype2/features/polls/presentation/today_polls_screen.dart';
+import 'package:vodid_prototype2/features/profile/user_profile_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});

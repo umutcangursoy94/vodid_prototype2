@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/my_votes_screen.dart';
-import 'package:vodid_prototype2/search_screen.dart';
-import 'package:vodid_prototype2/summary_screen.dart';
-import 'package:vodid_prototype2/today_polls_screen.dart';
+import 'package:vodid_prototype2/features/votes/my_votes_screen.dart';
+import 'package:vodid_prototype2/features/search/search_screen.dart';
+import 'package:vodid_prototype2/features/summary/summary_screen.dart';
+import 'package:vodid_prototype2/features/polls/presentation/today_polls_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

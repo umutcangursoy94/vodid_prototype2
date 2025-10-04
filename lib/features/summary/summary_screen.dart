@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/today_polls_screen.dart';
+import 'package:vodid_prototype2/features/polls/presentation/today_polls_screen.dart';
 
 class SummaryScreen extends StatelessWidget {
   final bool showAppBar;
