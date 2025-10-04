@@ -1,10 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
 import 'package:vodid_prototype2/summary_screen.dart';
 import 'package:vodid_prototype2/widgets/comments_sheet.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 
 class TodayPollsScreen extends StatefulWidget {
   final String? initialPollId;
@@ -290,6 +292,8 @@ class _PollFullPageState extends State<_PollFullPage> {
             final commentsCount = (realTimeData['commentsCount'] ?? 0) as int;
             final newsSummary = (realTimeData['news_summary'] ??
                 'Bu konu hakkında bir özet bulunamadı.') as String;
+            final pollQuestion =
+                (realTimeData['question'] ?? 'Anket Sorusu') as String;
 
             return Stack(
               fit: StackFit.expand,
@@ -331,13 +335,14 @@ class _PollFullPageState extends State<_PollFullPage> {
                           child: _RightActionBar(
                             commentsCount: commentsCount,
                             pollId: pollId,
+                            pollQuestion: pollQuestion,
                             newsSummary: newsSummary,
                           ),
                         ),
                       ),
                       StreamBuilder<DocumentSnapshot>(
                         stream: uid == null
-                            ? Stream.empty()
+                            ? const Stream.empty()
                             : widget.pollDoc.reference
                                 .collection('votes')
                                 .doc(uid)
@@ -558,16 +563,90 @@ class _PollQuestion extends StatelessWidget {
   }
 }
 
-class _RightActionBar extends StatelessWidget {
+class _RightActionBar extends StatefulWidget {
   final int commentsCount;
   final String pollId;
+  final String pollQuestion;
   final String newsSummary;
 
   const _RightActionBar({
     required this.commentsCount,
     required this.pollId,
+    required this.pollQuestion,
     required this.newsSummary,
   });
+
+  @override
+  State<_RightActionBar> createState() => _RightActionBarState();
+}
+
+class _RightActionBarState extends State<_RightActionBar> {
+  bool _isSaving = false;
+  late final Stream<DocumentSnapshot> _savedStatusStream;
+  late final FirebaseFunctions _functions;
+
+  @override
+  void initState() {
+    super.initState();
+    _functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _savedStatusStream = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('savedPolls')
+          .doc(widget.pollId)
+          .snapshots();
+    } else {
+      _savedStatusStream = const Stream.empty();
+    }
+  }
+
+  Future<void> _toggleSave() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bu işlem için giriş yapmalısınız.')),
+      );
+      return;
+    }
+    setState(() => _isSaving = true);
+    try {
+      final callable = _functions.httpsCallable('toggleSavePoll');
+      await callable.call({'pollId': widget.pollId});
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('İşlem başarısız oldu: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  /// KESİN OLARAK DÜZELTİLMİŞ PAYLAŞIM FONKSİYONU
+  Future<void> _sharePoll() async {
+    // HATA DÜZELTİLDİ: Artık 'Share.share' metodu kullanılıyor.
+    final result = await Share.share(
+      'Vodid anketini gördün mü? "${widget.pollQuestion}" #vodid',
+      subject: 'Vodid Anketi',
+    );
+
+    if (result.status == ShareResultStatus.success) {
+      try {
+        final callable = _functions.httpsCallable('incrementShareCount');
+        await callable.call({
+          'pollId': widget.pollId,
+          // result.raw içinde hangi uygulamayla paylaşıldığı bilgisi olabilir.
+          'platform': result.raw.isNotEmpty ? result.raw : 'shared',
+        });
+      } catch (e) {
+        // Arka plan işlemi, kullanıcıya hata göstermeye gerek yok.
+      }
+    }
+  }
 
   void _showNewsSummarySheet(BuildContext context) {
     showModalBottomSheet(
@@ -618,7 +697,7 @@ class _RightActionBar extends StatelessWidget {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              newsSummary,
+                              widget.newsSummary,
                               style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
@@ -642,20 +721,27 @@ class _RightActionBar extends StatelessWidget {
       children: [
         _ActionButton(
           icon: Icons.chat_bubble_outline_rounded,
-          label: commentsCount.toString(),
-          onTap: () => CommentsSheet.show(context, pollId: pollId),
+          label: widget.commentsCount.toString(),
+          onTap: () => CommentsSheet.show(context, pollId: widget.pollId),
         ),
         const SizedBox(height: 24),
         _ActionButton(
           icon: Icons.share_outlined,
           label: 'Paylaş',
-          onTap: () {},
+          onTap: _sharePoll,
         ),
         const SizedBox(height: 24),
-        _ActionButton(
-          icon: Icons.bookmark_border_outlined,
-          label: 'Kaydet',
-          onTap: () {},
+        StreamBuilder<DocumentSnapshot>(
+          stream: _savedStatusStream,
+          builder: (context, snapshot) {
+            final isSaved = snapshot.hasData && snapshot.data!.exists;
+            return _ActionButton(
+              icon: isSaved ? Icons.bookmark : Icons.bookmark_border_outlined,
+              label: 'Kaydet',
+              onTap: _toggleSave,
+              isLoading: _isSaving,
+            );
+          },
         ),
         const SizedBox(height: 24),
         _ActionButton(
@@ -669,19 +755,34 @@ class _RightActionBar extends StatelessWidget {
 }
 
 class _ActionButton extends StatelessWidget {
-  const _ActionButton(
-      {required this.icon, required this.label, required this.onTap});
   final IconData icon;
   final String label;
   final VoidCallback onTap;
+  final bool isLoading;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.isLoading = false,
+  });
+
   @override
   Widget build(BuildContext context) {
     const shadow = Shadow(color: Colors.black87, blurRadius: 6);
     return InkWell(
-      onTap: onTap,
+      onTap: isLoading ? null : onTap,
       child: Column(
         children: [
-          Icon(icon, color: Colors.white, size: 28, shadows: const [shadow]),
+          if (isLoading)
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.5, color: Colors.white),
+            )
+          else
+            Icon(icon, color: Colors.white, size: 28, shadows: const [shadow]),
           const SizedBox(height: 4),
           if (label.isNotEmpty)
             Text(

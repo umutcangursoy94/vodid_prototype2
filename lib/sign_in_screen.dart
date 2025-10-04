@@ -345,16 +345,15 @@ class _SignInScreenState extends State<SignInScreen> {
                                   color: theme.colorScheme.primary)),
                         ),
                         const SizedBox(height: 24),
-                        Row(
+                        const Row(
                           children: [
-                            const Expanded(child: Divider()),
-                            // --- DÜZELTME: 'const' eklendi ---
-                            const Padding(
+                            Expanded(child: Divider()),
+                            Padding(
                               padding: EdgeInsets.symmetric(horizontal: 12.0),
                               child: Text('YA DA',
                                   style: TextStyle(color: Colors.grey)),
                             ),
-                            const Expanded(child: Divider()),
+                            Expanded(child: Divider()),
                           ],
                         ),
                         const SizedBox(height: 24),

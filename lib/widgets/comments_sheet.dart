@@ -275,14 +275,12 @@ class _EmptyState extends StatelessWidget {
 class _CommentTile extends StatefulWidget {
   final String pollId;
   final DocumentSnapshot<Map<String, dynamic>> snap;
-  final VoidCallback? onLongPressDelete;
   final bool isHighlighted;
 
   const _CommentTile(
       {super.key,
       required this.pollId,
       required this.snap,
-      this.onLongPressDelete,
       this.isHighlighted = false});
 
   @override

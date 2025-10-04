@@ -16,6 +16,7 @@ dependencies:
   geocoding: ^2.1.1
   video_player: ^2.8.6
   visibility_detector: ^0.4.0+2
+  share_plus: ^9.0.0
 
   # FlutterFire (Tüm paketler uyumlu sürümlere güncellendi)
   firebase_core: ^2.32.0

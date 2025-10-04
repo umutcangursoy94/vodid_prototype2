@@ -4,18 +4,17 @@ import * as admin from "firebase-admin";
 admin.initializeApp();
 const db = admin.firestore();
 
-// Kullanıcı adlarından UID'leri bulan yardımcı fonksiyon
+// Fonksiyonları belirli bir bölgede (region) çalışacak şekilde tanımlıyoruz.
+const regionalFunctions = functions.region("europe-west1");
+
 async function parseMentions(text: string): Promise<string[]> {
   const mentions = text.match(/@(\w+)/g) || [];
   if (mentions.length === 0) {
     return [];
   }
-
-  const usernames = mentions.map((mention) => mention.substring(1)); // @ işaretini kaldır
-  const uniqueUsernames = [...new Set(usernames)]; // Tekrar edenleri kaldır
-
+  const usernames = mentions.map((mention) => mention.substring(1));
+  const uniqueUsernames = [...new Set(usernames)];
   const mentionedUids: string[] = [];
-  // Her bir kullanıcı adı için UID'yi bul
   for (const username of uniqueUsernames) {
     try {
       const userQuery = await db.collection("users").where("username", "==", username).limit(1).get();
@@ -26,91 +25,74 @@ async function parseMentions(text: string): Promise<string[]> {
       console.error(`Kullanıcı adı ${username} için UID bulunurken hata oluştu:`, error);
     }
   }
-
   return mentionedUids;
 }
 
-// YENİ: Ana yorumları eklemek için sunucu tarafı fonksiyonu
-export const addComment = functions.https.onCall(async (data, context) => {
+export const addComment = regionalFunctions.https.onCall(async (data, context) => {
   const uid = context.auth?.uid;
   if (!uid) {
     throw new functions.https.HttpsError("unauthenticated", "Yorum yapmak için giriş yapmalısınız.");
   }
-
   const { pollId, text } = data;
   if (!pollId || !text) {
     throw new functions.https.HttpsError("invalid-argument", "pollId ve text gereklidir.");
   }
-
   const userDoc = await db.collection("users").doc(uid).get();
   if (!userDoc.exists) {
     throw new functions.https.HttpsError("not-found", "Kullanıcı bulunamadı.");
   }
   const userData = userDoc.data()!;
   const pollDocRef = db.collection("polls").doc(pollId);
-
   const mentionedUids = await parseMentions(text);
-
   const newCommentRef = pollDocRef.collection("comments").doc();
   const batch = db.batch();
-
   batch.set(newCommentRef, {
     text: text,
     uid: uid,
     displayName: userData.displayName || "Anonim",
-    username: userData.username || "", // YANITLARDA ETİKETLEME İÇİN KULLANICI ADINI EKLİYORUZ
+    username: userData.username || "",
     photoURL: userData.photoURL || null,
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     pollId: pollId,
     likeCount: 0,
     replyCount: 0,
     likes: {},
-    mentions: mentionedUids, // Etiketlenenlerin UID'leri
+    mentions: mentionedUids,
   });
-
   batch.update(pollDocRef, { commentsCount: admin.firestore.FieldValue.increment(1) });
   batch.update(userDoc.ref, { commentsCount: admin.firestore.FieldValue.increment(1) });
-
   await batch.commit();
-
   return { success: true, commentId: newCommentRef.id };
 });
 
-// GÜNCELLENDİ: Yanıtlara etiketleme mantığı eklendi
-export const addReply = functions.https.onCall(async (data, context) => {
-  const uid = context.auth?.uid;
-  if (!uid) {
-    throw new functions.https.HttpsError("unauthenticated", "Yanıtlamak için giriş yapmalısınız.");
-  }
-
-  const { pollId, commentId, text } = data;
-  if (!pollId || !commentId || !text) {
-    throw new functions.https.HttpsError("invalid-argument", "pollId, commentId, ve text gereklidir.");
-  }
-
-  const user = await admin.auth().getUser(uid);
-  const commentRef = db.collection("polls").doc(pollId).collection("comments").doc(commentId);
-  const replyRef = commentRef.collection("replies").doc();
-
-  const mentionedUids = await parseMentions(text);
-
-  await replyRef.set({
-    text: text,
-    uid: uid,
-    displayName: user.displayName || "Anonim",
-    photoURL: user.photoURL || null,
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    mentions: mentionedUids,
-  });
-
-  await commentRef.update({
-    replyCount: admin.firestore.FieldValue.increment(1),
-  });
-
-  return { success: true };
+export const addReply = regionalFunctions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "Yanıtlamak için giriş yapmalısınız.");
+    }
+    const { pollId, commentId, text } = data;
+    if (!pollId || !commentId || !text) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId, commentId, ve text gereklidir.");
+    }
+    const user = await admin.auth().getUser(uid);
+    const commentRef = db.collection("polls").doc(pollId).collection("comments").doc(commentId);
+    const replyRef = commentRef.collection("replies").doc();
+    const mentionedUids = await parseMentions(text);
+    await replyRef.set({
+        text: text,
+        uid: uid,
+        displayName: user.displayName || "Anonim",
+        photoURL: user.photoURL || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        mentions: mentionedUids,
+    });
+    await commentRef.update({
+        replyCount: admin.firestore.FieldValue.increment(1),
+    });
+    return { success: true };
 });
 
-export const likeComment = functions.https.onCall(async (data, context) => {
+export const likeComment = regionalFunctions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "Beğenmek için giriş yapmalısınız.");
@@ -135,4 +117,46 @@ export const likeComment = functions.https.onCall(async (data, context) => {
         await commentRef.update({ likes, likeCount: likeCount + 1 });
         return { liked: true };
     }
+});
+
+export const toggleSavePoll = regionalFunctions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "Bu işlem için giriş yapmalısınız.");
+    }
+    const { pollId } = data;
+    if (!pollId) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId gereklidir.");
+    }
+    const userSavedPollsRef = db.collection("users").doc(uid).collection("savedPolls").doc(pollId);
+    const pollRef = db.collection("polls").doc(pollId);
+    const doc = await userSavedPollsRef.get();
+    if (doc.exists) {
+        await userSavedPollsRef.delete();
+        await pollRef.set({ savedByCount: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+        return { saved: false };
+    } else {
+        await userSavedPollsRef.set({
+            savedAt: admin.firestore.FieldValue.serverTimestamp(),
+            pollRef: pollRef,
+        });
+        await pollRef.set({ savedByCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+        return { saved: true };
+    }
+});
+
+export const incrementShareCount = regionalFunctions.https.onCall(async (data, context) => {
+    const { pollId, platform } = data;
+    if (!pollId || !platform) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId ve platform gereklidir.");
+    }
+    const pollRef = db.collection("polls").doc(pollId);
+    
+    await pollRef.set({
+        shareCounts: {
+            [platform.replace(/\./g, '_')]: admin.firestore.FieldValue.increment(1)
+        }
+    }, { merge: true });
+
+    return { success: true };
 });
