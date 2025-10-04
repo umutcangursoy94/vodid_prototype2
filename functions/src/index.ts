@@ -159,7 +159,6 @@ export const likeComment = functions.https.onCall(async (data, context) => {
     const likeCount = commentDoc.data()?.likeCount || 0;
 
     if (likes[uid]) {
-        // Beğeniyi geri al
         delete likes[uid];
         await commentRef.update({
             likes,
@@ -167,7 +166,6 @@ export const likeComment = functions.https.onCall(async (data, context) => {
         });
         return { liked: false };
     } else {
-        // Beğen
         likes[uid] = true;
         await commentRef.update({
             likes,
@@ -177,6 +175,7 @@ export const likeComment = functions.https.onCall(async (data, context) => {
     }
 });
 
+// --- BU FONKSİYON GÜNCELLENDİ ---
 export const addReply = functions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {

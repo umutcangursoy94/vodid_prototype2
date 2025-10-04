@@ -10,18 +10,18 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.2
-  google_fonts: ^6.2.1
+  google_fonts: ^6.2.1 
   device_info_plus: ^9.1.2
   location: ^5.0.3
   geocoding: ^2.1.1
-  video_player: ^2.8.6
+  video_player: ^2.8.6 
   visibility_detector: ^0.4.0+2
-
-  # FlutterFire (3.x uyumlu sürümler)
-  firebase_core: ^3.6.0
-  cloud_firestore: ^5.4.4
-  firebase_auth: ^5.3.1
-  cloud_functions: ^5.6.2 # Eklendi
+  
+  # FlutterFire (Tüm paketler uyumlu sürümlere güncellendi)
+  firebase_core: ^2.32.0
+  cloud_firestore: ^4.17.5
+  firebase_auth: ^4.20.0
+  cloud_functions: ^4.7.5
 
   # Google Sign-In
   google_sign_in: ^6.2.1
