@@ -1,72 +1,227 @@
-// Firebase Admin SDK ve Cloud Functions'ı projemize dahil ediyoruz.
-const functions = require("firebase-functions");
-const admin = require("firebase-admin");
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+
 admin.initializeApp();
+const db = admin.firestore();
 
-// Bir ankete YENİ BİR YORUM eklendiğinde tetiklenecek fonksiyon.
-exports.onCommentCreated = functions.firestore
-  // Wildcard {pollId} ve {commentId} ile TÜM anketlerin altındaki
-  // TÜM yorumları dinliyoruz.
-  .document("polls/{pollId}/comments/{commentId}")
-  .onCreate(async (snap, context) => {
-    // Yorumu yapan kullanıcının UID'sini alıyoruz.
-    const commentData = snap.data();
-    const userId = commentData.uid;
+function todayIdUTC(): string {
+  const now = new Date();
+  const yyyy = now.getUTCFullYear();
+  const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(now.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-    if (!userId) {
-      console.log("Yorumda kullanıcı UID'si bulunamadı.");
-      return null;
+/**
+ * submitVote (callable)
+ * - Tek oy kuralını server tarafında uygular
+ * - votes/{uid}_{pollId} oluşur
+ * - ilgili poll sayacını (option0Count/option1Count) atomik artırır
+ */
+export const submitVote = functions.https.onCall(async (data, context) => {
+  const uid = context.auth?.uid;
+  if (!uid) {
+    throw new functions.https.HttpsError("unauthenticated", "Login gerekli");
+  }
+  const pollId: string = data?.pollId;
+  const optionIndex: number = data?.optionIndex;
+
+  if (!pollId || (optionIndex !== 0 && optionIndex !== 1)) {
+    throw new functions.https.HttpsError("invalid-argument", "Parametre hatalı");
+  }
+
+  const voteDocId = `${uid}_${pollId}`;
+  const voteRef = db.collection("votes").doc(voteDocId);
+
+  // poll referansı: daily_sets/{today}/polls/{pollId}
+  // Not: dilersen client'tan dateId de gönderebilirsin; burada UTC “bugün” varsayıyoruz
+  const dateId = todayIdUTC();
+  const pollRef = db.collection("daily_sets").doc(dateId).collection("polls").doc(pollId);
+
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(voteRef);
+    if (existing.exists) {
+      throw new functions.https.HttpsError("already-exists", "Bu ankete zaten oy verdin.");
     }
 
-    // İlgili kullanıcının Firestore'daki döküman referansını alıyoruz.
-    const userRef = admin.firestore().collection("users").doc(userId);
-
-    try {
-      // FieldValue.increment(1) kullanarak commentsCount alanını
-      // atomik olarak 1 artırıyoruz. Bu, aynı anda birden fazla
-      // işlem olsa bile sayının doğru kalmasını sağlar.
-      await userRef.update({
-        commentsCount: admin.firestore.FieldValue.increment(1),
-      });
-      console.log(`Kullanıcı ${userId} için yorum sayısı artırıldı.`);
-      return null;
-    } catch (error) {
-      console.error(
-        `Kullanıcı ${userId} için yorum sayısı artırılamadı:`,
-        error
-      );
-      return null;
+    const pollSnap = await tx.get(pollRef);
+    if (!pollSnap.exists) {
+      throw new functions.https.HttpsError("not-found", "Anket bulunamadı.");
     }
+
+    // vote doc
+    tx.set(voteRef, {
+      userId: uid,
+      pollId,
+      option: optionIndex,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: false });
+
+    // counters
+    const inc = admin.firestore.FieldValue.increment(1);
+    const updates: Record<string, admin.firestore.FieldValue> = {};
+    if (optionIndex === 0) updates["option0Count"] = inc;
+    else updates["option1Count"] = inc;
+
+    tx.set(pollRef, updates, { merge: true });
   });
 
-// Bir anketten BİR YORUM SİLİNDİĞİNDE tetiklenecek fonksiyon.
-exports.onCommentDeleted = functions.firestore
-  .document("polls/{pollId}/comments/{commentId}")
-  .onDelete(async (snap, context) => {
-    // Silinen yorumun verilerini alıyoruz.
-    const commentData = snap.data();
-    const userId = commentData.uid;
+  return { ok: true };
+});
 
-    if (!userId) {
-      console.log("Silinen yorumda kullanıcı UID'si bulunamadı.");
-      return null;
-    }
+/**
+ * adminCreateDailySet (callable)
+ * - DEV: Günün 10 sorusunu elle basmak için
+ * - PROD: Cloud Scheduler/HTTP ile tetikleyip otomatik de yaratabilirsin
+ */
+export const adminCreateDailySet = functions.https.onCall(async (data, context) => {
+  // Basit admin kontrolü: isAdmin custom claim veya whitelist email kontrolü ekle
+  const uid = context.auth?.uid;
+  if (!uid) throw new functions.https.HttpsError("unauthenticated", "Login gerekli");
 
-    // İlgili kullanıcının döküman referansı.
-    const userRef = admin.firestore().collection("users").doc(userId);
+  const dateId: string = data?.dateId ?? todayIdUTC();
+  const polls: any[] = data?.polls;
+  if (!Array.isArray(polls) || polls.length === 0) {
+    throw new functions.https.HttpsError("invalid-argument", "polls[] gerekli");
+  }
 
-    try {
-      // FieldValue.increment(-1) kullanarak sayıyı 1 eksiltiyoruz.
-      await userRef.update({
-        commentsCount: admin.firestore.FieldValue.increment(-1),
-      });
-      console.log(`Kullanıcı ${userId} için yorum sayısı azaltıldı.`);
-      return null;
-    } catch (error) {
-      console.error(
-        `Kullanıcı ${userId} için yorum sayısı azaltılamadı:`,
-        error
-      );
-      return null;
-    }
+  const dailyRef = db.collection("daily_sets").doc(dateId);
+  await db.runTransaction(async (tx) => {
+    tx.set(dailyRef, {
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      totalPolls: polls.length,
+      dateId,
+    }, { merge: true });
+
+    const col = dailyRef.collection("polls");
+    polls.forEach((p, idx) => {
+      const id = p.id ?? db.collection("_").doc().id;
+      tx.set(col.doc(id), {
+        question: p.question ?? "",
+        option0Label: p.option0Label ?? "Seçenek A",
+        option1Label: p.option1Label ?? "Seçenek B",
+        option0Image: p.option0Image ?? "",
+        option1Image: p.option1Image ?? "",
+        option0Count: 0,
+        option1Count: 0,
+        order: p.order ?? idx,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: false });
+    });
   });
+
+  return { ok: true, dateId };
+});
+
+/**
+ * (Opsiyonel) HTTP endpoint — Cloud Scheduler ile her sabah 08:00'de oluştur
+ * Basit bir sablon basar (dummy).
+ */
+export const createDailySetHttp = functions.https.onRequest(async (req, res) => {
+  const dateId = todayIdUTC();
+  const dailyRef = db.collection("daily_sets").doc(dateId);
+  const batch = db.batch();
+
+  batch.set(dailyRef, {
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    totalPolls: 10,
+    dateId,
+  }, { merge: true });
+
+  const polls = Array.from({ length: 10 }).map((_, i) => ({
+    id: `p${i+1}`,
+    question: `Günün ${i+1}. sorusu: Kanye vs Taylor? (örnek)`,
+    option0Label: "Kanye",
+    option1Label: "Taylor",
+    option0Image: "",
+    option1Image: "",
+    order: i,
+  }));
+
+  polls.forEach((p) => {
+    const ref = dailyRef.collection("polls").doc(p.id);
+    batch.set(ref, {
+      question: p.question,
+      option0Label: p.option0Label,
+      option1Label: p.option1Label,
+      option0Image: p.option0Image,
+      option1Image: p.option1Image,
+      option0Count: 0,
+      option1Count: 0,
+      order: p.order,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  await batch.commit();
+  res.json({ ok: true, dateId });
+});
+
+export const likeComment = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "Beğenmek için giriş yapmalısınız.");
+    }
+
+    const { pollId, commentId } = data;
+    if (!pollId || !commentId) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId ve commentId gereklidir.");
+    }
+
+    const commentRef = db.collection("polls").doc(pollId).collection("comments").doc(commentId);
+    const commentDoc = await commentRef.get();
+
+    if (!commentDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Yorum bulunamadı.");
+    }
+
+    const likes = commentDoc.data()?.likes || {};
+    const likeCount = commentDoc.data()?.likeCount || 0;
+
+    if (likes[uid]) {
+        // Beğeniyi geri al
+        delete likes[uid];
+        await commentRef.update({
+            likes,
+            likeCount: likeCount - 1,
+        });
+        return { liked: false };
+    } else {
+        // Beğen
+        likes[uid] = true;
+        await commentRef.update({
+            likes,
+            likeCount: likeCount + 1,
+        });
+        return { liked: true };
+    }
+});
+
+export const addReply = functions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "Yanıtlamak için giriş yapmalısınız.");
+    }
+
+    const { pollId, commentId, text } = data;
+    if (!pollId || !commentId || !text) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId, commentId, ve text gereklidir.");
+    }
+
+    const commentRef = db.collection("polls").doc(pollId).collection("comments").doc(commentId);
+    const replyRef = commentRef.collection("replies").doc();
+
+    await replyRef.set({
+        text,
+        uid,
+        displayName: context.auth?.token.name || "Anonim",
+        photoURL: context.auth?.token.picture || null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    await commentRef.update({
+        replyCount: admin.firestore.FieldValue.increment(1),
+    });
+
+    return { success: true };
+});
