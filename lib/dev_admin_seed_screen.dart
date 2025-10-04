@@ -64,6 +64,99 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
     }
   }
 
+  /// Tüm oyları, yorumları ve sayaçları sıfırlayan fonksiyon.
+  Future<void> _resetAllData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Tüm Verileri Sıfırla'),
+        content: const Text(
+            'Bu işlem geri alınamaz. Tüm kullanıcıların oyları, yorumları ve sayaçları sıfırlanacak. Emin misiniz?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('İptal'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Evet, Sıfırla'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() {
+      _busy = true;
+      _log = 'Tüm veriler sıfırlanıyor, lütfen bekleyin...';
+    });
+
+    try {
+      final batch = _db.batch();
+
+      // 1. Tüm anketlerin sayaçlarını sıfırla ve alt koleksiyonlarını sil
+      final pollsSnap = await _db.collection('polls').get();
+      for (final pollDoc in pollsSnap.docs) {
+        // Alt koleksiyonları (yorumlar, oylar) sil
+        final commentsSnap =
+            await pollDoc.reference.collection('comments').get();
+        for (final commentDoc in commentsSnap.docs) {
+          final repliesSnap =
+              await commentDoc.reference.collection('replies').get();
+          for (final replyDoc in repliesSnap.docs) {
+            batch.delete(replyDoc.reference);
+          }
+          batch.delete(commentDoc.reference);
+        }
+
+        final votesSnap = await pollDoc.reference.collection('votes').get();
+        for (final voteDoc in votesSnap.docs) {
+          batch.delete(voteDoc.reference);
+        }
+
+        // Ana sayaçları sıfırla
+        final options = List<String>.from(pollDoc.data()['options'] ?? []);
+        final zeroCounts = {for (var opt in options) opt: 0};
+        batch.update(pollDoc.reference, {
+          'commentsCount': 0,
+          'counts': zeroCounts,
+        });
+      }
+
+      // 2. Tüm kullanıcıların sayaçlarını sıfırla ve alt koleksiyonlarını sil
+      final usersSnap = await _db.collection('users').get();
+      for (final userDoc in usersSnap.docs) {
+        // 'votes' alt koleksiyonunu sil
+        final userVotesSnap = await userDoc.reference.collection('votes').get();
+        for (final voteDoc in userVotesSnap.docs) {
+          batch.delete(voteDoc.reference);
+        }
+
+        // Kullanıcı sayaçlarını sıfırla
+        batch.update(userDoc.reference, {
+          'commentsCount': 0,
+          'votesCount': 0,
+          // Not: Takipçi sayılarını sıfırlamak isterseniz aşağıdaki satırları ekleyebilirsiniz.
+          // 'followersCount': 0,
+          // 'followingCount': 0,
+        });
+      }
+
+      await batch.commit();
+
+      setState(() {
+        _log = '✅ BAŞARILI: Tüm oylar, yorumlar ve sayaçlar sıfırlandı!';
+      });
+    } catch (e) {
+      setState(
+          () => _log = '❌ HATA: Veriler sıfırlanırken bir sorun oluştu: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   String _slugify(String text) {
     String slug = text.toLowerCase();
     slug = slug
@@ -108,6 +201,18 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 12)),
                 icon: const Icon(Icons.add_to_photos_outlined),
                 label: const Text('Gündem Anketlerini Oluştur (10 Adet)',
+                    style: TextStyle(fontSize: 16)),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _busy ? null : _resetAllData,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red[700],
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                icon: const Icon(Icons.delete_forever_outlined),
+                label: const Text('Tüm Oyları ve Yorumları Sıfırla',
                     style: TextStyle(fontSize: 16)),
               ),
             ],
