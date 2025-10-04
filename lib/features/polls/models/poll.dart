@@ -1,44 +1,41 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Firestore'daki anket belgelerini temsil eden model.
-class PollModel {
+class Poll {
   final String id;
   final String question;
   final List<String> options;
   final Map<String, int> counts;
   final bool isActive;
   final DateTime? createdAt;
-  final int order;
-  final String? newsSummary;
-  final String? videoUrl;
+  final int commentsCount;
 
-  PollModel({
+  Poll({
     required this.id,
     required this.question,
     required this.options,
     required this.counts,
     required this.isActive,
     required this.createdAt,
-    required this.order,
-    this.newsSummary,
-    this.videoUrl,
+    required this.commentsCount,
   });
 
-  factory PollModel.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
+  factory Poll.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
-    return PollModel(
+    return Poll(
       id: doc.id,
       question: (data['question'] ?? '').toString(),
-      options: List<String>.from(data['options'] ?? []),
-      counts: Map<String, int>.from(
-          (data['counts'] ?? {}).map((k, v) => MapEntry(k, v as int))),
+      options:
+          (data['options'] as List?)?.map((e) => e.toString()).toList() ?? [],
+      counts: (data['counts'] as Map?)?.map(
+            (key, value) => MapEntry(key.toString(), (value ?? 0) as int),
+          ) ??
+          {},
       isActive: (data['isActive'] ?? false) as bool,
       createdAt: data['createdAt'] is Timestamp
           ? (data['createdAt'] as Timestamp).toDate()
           : null,
-      order: (data['order'] ?? 0) as int,
-      newsSummary: data['news_summary']?.toString(),
-      videoUrl: data['videoUrl']?.toString(),
+      commentsCount: (data['commentsCount'] ?? 0) as int,
     );
   }
 
@@ -51,9 +48,8 @@ class PollModel {
       'createdAt': createdAt != null
           ? Timestamp.fromDate(createdAt!)
           : FieldValue.serverTimestamp(),
-      'order': order,
-      if (newsSummary != null) 'news_summary': newsSummary,
-      if (videoUrl != null) 'videoUrl': videoUrl,
+      'order': DateTime.now().millisecondsSinceEpoch,
+      'commentsCount': commentsCount,
     };
   }
 }

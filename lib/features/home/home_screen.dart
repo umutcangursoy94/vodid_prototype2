@@ -1,107 +1,48 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/features/votes/my_votes_screen.dart';
-import 'package:vodid_prototype2/features/search/search_screen.dart';
-import 'package:vodid_prototype2/features/summary/summary_screen.dart';
-import 'package:vodid_prototype2/features/polls/presentation/today_polls_screen.dart';
+import 'package:go_router/go_router.dart';
+import 'package:vodid_prototype2/core/constants/strings.dart';
 
-class HomeScreen extends StatefulWidget {
+/// Uygulamanın ana ekranı.
+/// Kullanıcıya farklı sayfalara gitmesi için menü sunar.
+class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
-
-  static final List<Widget> _widgetOptions = <Widget>[
-    const TodayPollsScreen(),
-    const SearchScreen(),
-    // HATA DÜZELTMESİ: SummaryScreen'in artık anket listesini parametre
-    // olarak alması gerekiyor. Bu yüzden bir StreamBuilder ile veriyi
-    // Firestore'dan çekip SummaryScreen'e iletiyoruz.
-    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('polls')
-          .orderBy('order')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data?.docs ?? [];
-        // 'polls' parametresi burada veriliyor.
-        return SummaryScreen(polls: docs);
-      },
-    ),
-    const MyVotesScreen(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final items = [
+      _HomeItem("Bugünün Anketi", Icons.poll, '/poll'),
+      _HomeItem("Arama", Icons.search, '/search'),
+      _HomeItem("Oylarım", Icons.how_to_vote, '/votes'),
+      _HomeItem("Profil", Icons.person, '/profile'),
+      _HomeItem("Giriş Yap", Icons.login, '/signin'),
+      _HomeItem("Özet", Icons.article, '/summary'),
+    ];
+
     return Scaffold(
-      body: Center(
-        child: _widgetOptions.elementAt(_selectedIndex),
+      appBar: AppBar(
+        title: const Text(AppStrings.appName),
       ),
-      bottomNavigationBar: _CustomBottomNavBar(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
+      body: ListView.separated(
+        itemCount: items.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final item = items[index];
+          return ListTile(
+            leading: Icon(item.icon),
+            title: Text(item.title),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.go(item.route),
+          );
+        },
       ),
     );
   }
 }
 
-class _CustomBottomNavBar extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onItemTapped;
+class _HomeItem {
+  final String title;
+  final IconData icon;
+  final String route;
 
-  const _CustomBottomNavBar({
-    required this.selectedIndex,
-    required this.onItemTapped,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300, width: 1.5),
-        ),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(Icons.poll_outlined, 0),
-              _buildNavItem(Icons.search, 1),
-              _buildNavItem(Icons.bar_chart_outlined, 2),
-              _buildNavItem(Icons.person_outline, 3),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, int index) {
-    final isSelected = selectedIndex == index;
-    return IconButton(
-      onPressed: () => onItemTapped(index),
-      icon: Icon(
-        icon,
-        color: isSelected ? Colors.black : Colors.grey[500],
-        size: 30,
-      ),
-    );
-  }
+  _HomeItem(this.title, this.icon, this.route);
 }

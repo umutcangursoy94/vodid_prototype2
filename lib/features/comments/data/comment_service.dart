@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../../core/constants/firestore_paths.dart';
-import '../models/comment.dart';
+import 'package:vodid_prototype2/core/constants/firestore_paths.dart';
+import 'package:vodid_prototype2/features/comments/models/comment.dart';
 
 /// Firestore üzerinde yorumlar ve yanıtlarla ilgili işlemleri yapan servis.
 class CommentService {
@@ -52,7 +52,7 @@ class CommentService {
       // Üst seviye yorum
       await _db.collection(FirestorePaths.pollComments(pollId)).add(data);
 
-      // İstersen commentsCount alanını artır
+      // commentsCount alanını artır
       await _db.collection(FirestorePaths.polls).doc(pollId).update({
         'commentsCount': FieldValue.increment(1),
       });

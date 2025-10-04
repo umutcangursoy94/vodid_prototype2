@@ -1,56 +1,44 @@
 import 'package:flutter/material.dart';
 
-/// Uygulama genelinde kullanılan ortak widget temaları.
-/// Buradaki stiller [ThemeData] içine entegre edilebilir.
-class WidgetsTheme {
-  /// Ortak CardTheme
-  static CardTheme cardTheme = CardTheme(
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-    ),
+/// Uygulamanın genel widget temaları burada tanımlanır.
+/// Card, Button, Input gibi bileşenlerin ortak stilleri.
+class AppWidgetsTheme {
+  AppWidgetsTheme._();
+
+  /// Kart teması
+  static const CardTheme cardTheme = CardTheme(
     elevation: 2,
-    margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+    margin: EdgeInsets.all(8),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.all(Radius.circular(16)),
+    ),
   );
 
-  /// Ortak InputDecorationTheme
-  static InputDecorationTheme inputDecorationTheme = InputDecorationTheme(
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.indigo, width: 2),
-    ),
-    contentPadding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-  );
-
-  /// Ortak ElevatedButtonTheme
-  static ElevatedButtonThemeData elevatedButtonTheme = ElevatedButtonThemeData(
+  /// ElevatedButton teması
+  static final ElevatedButtonThemeData elevatedButtonTheme =
+      ElevatedButtonThemeData(
     style: ElevatedButton.styleFrom(
+      minimumSize: const Size.fromHeight(48),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-      textStyle: const TextStyle(fontWeight: FontWeight.bold),
-    ),
-  );
-
-  /// Ortak TextButtonTheme
-  static TextButtonThemeData textButtonTheme = TextButtonThemeData(
-    style: TextButton.styleFrom(
-      foregroundColor: Colors.indigo,
-      textStyle: const TextStyle(fontWeight: FontWeight.w600),
-    ),
-  );
-
-  /// Ortak OutlinedButtonTheme
-  static OutlinedButtonThemeData outlinedButtonTheme = OutlinedButtonThemeData(
-    style: OutlinedButton.styleFrom(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+      textStyle: const TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w600,
       ),
-      side: const BorderSide(color: Colors.indigo),
-      textStyle: const TextStyle(fontWeight: FontWeight.w600),
+    ),
+  );
+
+  /// Input alanı teması
+  static const InputDecorationTheme inputDecorationTheme = InputDecorationTheme(
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.all(Radius.circular(12)),
+    ),
+    filled: true,
+    fillColor: Color(0xFFF9F9F9),
+    contentPadding: EdgeInsets.symmetric(
+      vertical: 12,
+      horizontal: 16,
     ),
   );
 }

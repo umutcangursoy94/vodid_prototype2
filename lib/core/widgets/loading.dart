@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Uygulama genelinde kullanılan yükleniyor widget'ı.
-/// Ortada dönen progress göstergesi sunar.
+/// Yüklenme durumunu göstermek için kullanılan widget.
+/// fullscreen true ise tüm ekranı kaplayan loader gösterir.
 class Loading extends StatelessWidget {
   final String? message;
   final bool fullscreen;

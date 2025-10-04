@@ -43,10 +43,7 @@ class CommentThreadPage extends StatelessWidget {
 }
 
 class _CommentList extends StatelessWidget {
-  const _CommentList({
-    required this.pollId,
-    required this.parentComment,
-  });
+  const _CommentList({required this.pollId, required this.parentComment});
 
   final String pollId;
   final CommentModel? parentComment;
@@ -117,7 +114,6 @@ class _CommentTile extends StatelessWidget {
       ),
       onTap: () {
         if (!isReply) {
-          // Yorumun yanıtlarını aç
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => CommentThreadPage(
@@ -146,8 +142,8 @@ class _CommentInputState extends State<_CommentInput> {
   final _controller = TextEditingController();
   bool _sending = false;
 
-  // TODO: FirebaseAuth entegrasyonu eklediğinde burayı güncelle
-  String get _userId => 'demoUserId';
+  String get _userId =>
+      'demoUserId'; // TODO: FirebaseAuth entegrasyonu eklenecek
   String get _displayName => 'Kullanıcı';
 
   Future<void> _send() async {
@@ -163,8 +159,10 @@ class _CommentInputState extends State<_CommentInput> {
         parentCommentId: widget.parentComment?.id,
       );
       _controller.clear();
+      if (!mounted) return;
       FocusScope.of(context).unfocus();
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('${AppStrings.sendFailed}: $e')),
       );

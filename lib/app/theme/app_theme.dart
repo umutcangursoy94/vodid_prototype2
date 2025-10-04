@@ -1,60 +1,46 @@
 import 'package:flutter/material.dart';
+import 'widgets_theme.dart';
 
+/// Uygulamanın genel tema ayarları burada toplanır.
+/// Renk paleti, yazı tipleri, buton stilleri gibi tüm MaterialTheme ayarlarını içerir.
 class AppTheme {
-  /// Açık tema
-  static ThemeData get light {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.light,
-      primarySwatch: Colors.indigo,
-      scaffoldBackgroundColor: Colors.white,
+  AppTheme._();
+
+  /// Light tema
+  static ThemeData light() {
+    final base = ThemeData.light(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
       appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 0,
-        centerTitle: true,
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        ),
+      scaffoldBackgroundColor: Colors.white,
+      cardTheme: AppWidgetsTheme.cardTheme,
+      elevatedButtonTheme: AppWidgetsTheme.elevatedButtonTheme,
+      inputDecorationTheme: AppWidgetsTheme.inputDecorationTheme,
+      dividerTheme: const DividerThemeData(
+        color: Colors.grey,
+        thickness: 0.6,
       ),
     );
   }
 
-  /// Koyu tema
-  static ThemeData get dark {
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.dark,
-      primarySwatch: Colors.indigo,
-      scaffoldBackgroundColor: Colors.black,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
+  /// Dark tema (opsiyonel, ileride ekleyebilirsin)
+  static ThemeData dark() {
+    final base = ThemeData.dark(useMaterial3: true);
+    return base.copyWith(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: Colors.blue,
+        brightness: Brightness.dark,
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
-        ),
+      cardTheme: AppWidgetsTheme.cardTheme,
+      elevatedButtonTheme: AppWidgetsTheme.elevatedButtonTheme,
+      inputDecorationTheme: AppWidgetsTheme.inputDecorationTheme,
+      dividerTheme: const DividerThemeData(
+        color: Colors.grey,
+        thickness: 0.6,
       ),
     );
   }

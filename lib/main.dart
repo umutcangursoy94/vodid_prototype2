@@ -12,7 +12,7 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  // Ortak servisleri başlat
+  // Ortak servisleri başlat (Firestore vb.)
   await FirebaseService().init();
 
   runApp(const VodidApp());

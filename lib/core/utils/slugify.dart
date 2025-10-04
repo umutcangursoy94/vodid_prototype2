@@ -1,42 +1,20 @@
-import 'dart:math';
-
-/// Metinleri Firestore doküman id'si veya URL için uygun slug formatına çevirir.
+/// String değerlerden Firestore döküman ID'si veya URL dostu slug üretmek için yardımcı sınıf.
 class Slugify {
-  /// Türkçe karakterleri dönüştürür, boşlukları `-` yapar, küçük harfe çevirir.
-  /// Sonuna rastgele 3 harf ekleyerek benzersizliği artırır.
+  Slugify._();
+
+  /// Verilen string'i küçük harfe çevirir, boşlukları ve özel karakterleri temizler.
+  /// Örn: "Bugün Anket Var!" → "bugun-anket-var"
   static String generate(String input) {
-    if (input.isEmpty) return '';
-
-    const trMap = {
-      'ç': 'c',
-      'ğ': 'g',
-      'ı': 'i',
-      'ö': 'o',
-      'ş': 's',
-      'ü': 'u',
-      'Ç': 'c',
-      'Ğ': 'g',
-      'İ': 'i',
-      'Ö': 'o',
-      'Ş': 's',
-      'Ü': 'u',
-    };
-
-    // Türkçe karakterleri dönüştür
-    final replaced = input.split('').map((ch) => trMap[ch] ?? ch).join();
-
-    // Sadece harf, sayı ve boşluk bırak
-    final cleaned =
-        replaced.toLowerCase().replaceAll(RegExp(r'[^a-z0-9\s-]'), '').trim();
-
-    // Boşlukları tireye çevir
-    final slug = cleaned.replaceAll(RegExp(r'\s+'), '-');
-
-    // Sonuna 3 harflik random suffix ekle
-    final rand = String.fromCharCodes(
-      List.generate(3, (_) => 97 + Random().nextInt(26)),
-    );
-
-    return '$slug-$rand';
+    return input
+        .toLowerCase()
+        .replaceAll(RegExp(r'ğ'), 'g')
+        .replaceAll(RegExp(r'ü'), 'u')
+        .replaceAll(RegExp(r'ş'), 's')
+        .replaceAll(RegExp(r'ı'), 'i')
+        .replaceAll(RegExp(r'ö'), 'o')
+        .replaceAll(RegExp(r'ç'), 'c')
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '-') // sadece a-z ve 0-9 kalsın
+        .replaceAll(RegExp(r'-+'), '-') // birden fazla - varsa teke düşür
+        .replaceAll(RegExp(r'^-|-$'), ''); // baştaki/sondaki - sil
   }
 }

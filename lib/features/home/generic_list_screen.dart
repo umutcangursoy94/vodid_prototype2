@@ -1,58 +1,46 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:vodid_prototype2/core/widgets/empty_state.dart';
+import 'package:vodid_prototype2/core/widgets/loading.dart';
 
-class GenericListScreen extends StatelessWidget {
+/// Genel amaçlı liste ekranı.
+/// Firestore veya başka kaynaklardan alınan verileri listelemek için kullanılabilir.
+/// title: AppBar başlığı
+/// itemBuilder: her öğe için widget oluşturucu
+/// items: liste elemanları
+/// isLoading: yüklenme durumu
+class GenericListScreen<T> extends StatelessWidget {
   final String title;
-  final Stream<QuerySnapshot> stream;
-  final Widget Function(BuildContext context, DocumentSnapshot doc) itemBuilder;
-  final String emptyMessage;
+  final List<T> items;
+  final bool isLoading;
+  final Widget Function(BuildContext, T) itemBuilder;
+  final VoidCallback? onRetry;
 
   const GenericListScreen({
     super.key,
     required this.title,
-    required this.stream,
+    required this.items,
     required this.itemBuilder,
-    this.emptyMessage = 'Burada gösterilecek bir şey yok.',
+    this.isLoading = false,
+    this.onRetry,
   });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(title, style: Theme.of(context).textTheme.titleLarge),
-      ),
-      body: StreamBuilder<QuerySnapshot>(
-        stream: stream,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return Center(child: Text('Bir hata oluştu: ${snapshot.error}'));
-          }
-          final docs = snapshot.data?.docs ?? [];
-          if (docs.isEmpty) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Text(
-                  emptyMessage,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 18, color: Colors.grey),
+      appBar: AppBar(title: Text(title)),
+      body: isLoading
+          ? const Loading()
+          : items.isEmpty
+              ? EmptyState(
+                  message: "Gösterilecek öğe yok",
+                  onRetry: onRetry,
+                )
+              : ListView.separated(
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) =>
+                      itemBuilder(context, items[index]),
                 ),
-              ),
-            );
-          }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: docs.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              return itemBuilder(context, docs[index]);
-            },
-          );
-        },
-      ),
     );
   }
 }

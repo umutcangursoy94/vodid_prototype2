@@ -1,42 +1,30 @@
 import 'package:intl/intl.dart';
 
-/// Uygulama genelinde kullanılan formatlama yardımcıları.
-/// Tek yerde tutarak tarih/sayı biçimlerini standart hale getirir.
+/// Uygulama genelinde tarih, saat ve sayı formatlamaları için yardımcı fonksiyonlar.
 class Formatters {
-  /// Tarihi (dd.MM.yyyy) formatında döndürür.
+  Formatters._();
+
+  /// Tarihi (DateTime) dd.MM.yyyy formatında döner.
   static String formatDate(DateTime? date) {
     if (date == null) return '-';
     return DateFormat('dd.MM.yyyy').format(date);
   }
 
-  /// Tarihi (dd.MM.yyyy HH:mm) formatında döndürür.
-  static String formatDateTime(DateTime? dateTime) {
-    if (dateTime == null) return '-';
-    return DateFormat('dd.MM.yyyy HH:mm').format(dateTime);
+  /// Tarihi (DateTime) dd.MM.yyyy HH:mm formatında döner.
+  static String formatDateTime(DateTime? date) {
+    if (date == null) return '-';
+    return DateFormat('dd.MM.yyyy HH:mm').format(date);
   }
 
-  /// Sadece saat (HH:mm) formatı.
-  static String formatTime(DateTime? dateTime) {
-    if (dateTime == null) return '-';
-    return DateFormat('HH:mm').format(dateTime);
+  /// Sadece saati (HH:mm) formatında döner.
+  static String formatTime(DateTime? date) {
+    if (date == null) return '-';
+    return DateFormat('HH:mm').format(date);
   }
 
-  /// Sayıyı binlik ayırıcılarla (1.234, 56) döndürür.
-  static String formatNumber(num? number, {int decimalDigits = 0}) {
-    if (number == null) return '-';
-    final format = NumberFormat.decimalPattern('tr_TR')
-      ..minimumFractionDigits = decimalDigits
-      ..maximumFractionDigits = decimalDigits;
-    return format.format(number);
-  }
-
-  /// Yüzde formatı (örn: 23 → %23)
-  static String formatPercent(num? value, {int decimalDigits = 0}) {
-    if (value == null) return '-';
-    final format = NumberFormat.decimalPercentPattern(
-      locale: 'tr_TR',
-      decimalDigits: decimalDigits,
-    );
-    return format.format(value / 100);
+  /// Büyük sayıları (örn: 1200 → 1.2K) daha okunabilir hale getirir.
+  static String formatCompactNumber(num number) {
+    final formatter = NumberFormat.compact(locale: 'tr_TR');
+    return formatter.format(number);
   }
 }

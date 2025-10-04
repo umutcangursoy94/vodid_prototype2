@@ -1,22 +1,15 @@
-/// Firestore koleksiyon ve doküman yolları için sabitler.
-/// Tüm servisler ve widget'lar bu sınıf üzerinden referans almalı.
+/// Firestore koleksiyon ve döküman yolları burada merkezi olarak tanımlanır.
+/// Böylece kod içinde string sabitler yerine bu fonksiyonlar kullanılır.
 class FirestorePaths {
-  // Ana koleksiyon
+  FirestorePaths._();
+
+  // Ana koleksiyonlar
   static const String polls = 'polls';
 
-  // Alt koleksiyonlar
-  static String poll(String pollId) => '$polls/$pollId';
-  static String pollComments(String pollId) => '$polls/$pollId/comments';
-  static String pollComment(String pollId, String commentId) =>
-      '$polls/$pollId/comments/$commentId';
-  static String pollCommentReplies(String pollId, String commentId) =>
-      '$polls/$pollId/comments/$commentId/replies';
-  static String pollCommentReply(
-          String pollId, String commentId, String replyId) =>
-      '$polls/$pollId/comments/$commentId/replies/$replyId';
+  // Yorumlar
+  static String pollComments(String pollId) => 'polls/$pollId/comments';
 
-  // Opsiyonel: votes koleksiyonu (eğer kullanıyorsan)
-  static String pollVotes(String pollId) => '$polls/$pollId/votes';
-  static String pollVote(String pollId, String voteId) =>
-      '$polls/$pollId/votes/$voteId';
+  // Yanıtlar
+  static String pollCommentReplies(String pollId, String commentId) =>
+      'polls/$pollId/comments/$commentId/replies';
 }

@@ -1,51 +1,22 @@
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 
-/// Firebase ile ilgili tüm başlangıç ayarlarını ve ortak erişim noktalarını içerir.
+/// Firebase servislerini initialize eden sınıf.
+/// İleride Authentication, Storage vb. eklenirse buraya dahil edilebilir.
 class FirebaseService {
   static final FirebaseService _instance = FirebaseService._internal();
   factory FirebaseService() => _instance;
+
   FirebaseService._internal();
 
-  /// Firebase initialize edildi mi kontrolü
-  bool _initialized = false;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  /// Firebase initialize
   Future<void> init() async {
-    if (_initialized) return;
-    try {
-      await Firebase.initializeApp();
-      _initialized = true;
-      if (kDebugMode) {
-        print('✅ Firebase initialized successfully');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('❌ Firebase initialization error: $e');
-      }
-      rethrow;
-    }
+    // Firestore için default ayarlar
+    _firestore.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
   }
 
-  /// Firestore instance
-  FirebaseFirestore get firestore => FirebaseFirestore.instance;
-
-  /// FirebaseAuth instance
-  FirebaseAuth get auth => FirebaseAuth.instance;
-
-  /// Test için Firestore bağlantısı kontrolü
-  Future<void> testConnection() async {
-    try {
-      final doc = await firestore.collection('test').doc('connection').get();
-      if (kDebugMode) {
-        print('Firestore connection OK. Doc exists: ${doc.exists}');
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Firestore connection failed: $e');
-      }
-    }
-  }
+  FirebaseFirestore get firestore => _firestore;
 }

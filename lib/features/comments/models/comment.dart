@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Firestore'daki yorum belgelerini temsil eden model.
-/// Hem üst seviye yorumlar hem de yanıtlar için kullanılır.
 class CommentModel {
   final String id;
   final String text;
@@ -19,7 +18,6 @@ class CommentModel {
     required this.createdAt,
   });
 
-  /// Firestore dokümanından model oluşturur.
   factory CommentModel.fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? {};
     return CommentModel(
@@ -28,13 +26,12 @@ class CommentModel {
       userId: (data['userId'] ?? '').toString(),
       displayName: (data['displayName'] ?? '').toString(),
       likeCount: (data['likeCount'] ?? 0) is int ? data['likeCount'] as int : 0,
-      createdAt: (data['createdAt'] is Timestamp)
+      createdAt: data['createdAt'] is Timestamp
           ? (data['createdAt'] as Timestamp).toDate()
           : null,
     );
   }
 
-  /// Modele göre Firestore’a kaydedilecek map
   Map<String, dynamic> toMap() {
     return {
       'text': text,

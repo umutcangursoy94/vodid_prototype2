@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Boş durum (empty state) widget'ı.
-/// Veri olmadığında standart bir görünüm sağlar.
+/// Uygulamada boş veya hata durumlarında gösterilen widget.
+/// Mesaj, ikon ve opsiyonel yeniden dene butonu içerir.
 class EmptyState extends StatelessWidget {
   final String message;
   final IconData icon;
@@ -10,7 +10,7 @@ class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
     required this.message,
-    this.icon = Icons.inbox_outlined,
+    this.icon = Icons.info_outline,
     this.onRetry,
   });
 
@@ -22,17 +22,19 @@ class EmptyState extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: Colors.grey.shade400),
+            Icon(
+              icon,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
             const SizedBox(height: 16),
             Text(
               message,
+              style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: Colors.grey.shade600,
-                  ),
             ),
             if (onRetry != null) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               ElevatedButton.icon(
                 onPressed: onRetry,
                 icon: const Icon(Icons.refresh),
