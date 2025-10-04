@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.likeComment = exports.addReply = exports.addComment = void 0;
+exports.incrementShareCount = exports.toggleSavePoll = exports.likeComment = exports.addReply = exports.addComment = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 admin.initializeApp();
 const db = admin.firestore();
+const regionalFunctions = functions.region("europe-west1");
 async function parseMentions(text) {
     const mentions = text.match(/@(\w+)/g) || [];
     if (mentions.length === 0) {
@@ -26,7 +27,7 @@ async function parseMentions(text) {
     }
     return mentionedUids;
 }
-exports.addComment = functions.https.onCall(async (data, context) => {
+exports.addComment = regionalFunctions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "Yorum yapmak için giriş yapmalısınız.");
@@ -62,7 +63,7 @@ exports.addComment = functions.https.onCall(async (data, context) => {
     await batch.commit();
     return { success: true, commentId: newCommentRef.id };
 });
-exports.addReply = functions.https.onCall(async (data, context) => {
+exports.addReply = regionalFunctions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "Yanıtlamak için giriş yapmalısınız.");
@@ -88,7 +89,7 @@ exports.addReply = functions.https.onCall(async (data, context) => {
     });
     return { success: true };
 });
-exports.likeComment = functions.https.onCall(async (data, context) => {
+exports.likeComment = regionalFunctions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;
     if (!uid) {
         throw new functions.https.HttpsError("unauthenticated", "Beğenmek için giriş yapmalısınız.");
@@ -114,5 +115,44 @@ exports.likeComment = functions.https.onCall(async (data, context) => {
         await commentRef.update({ likes, likeCount: likeCount + 1 });
         return { liked: true };
     }
+});
+exports.toggleSavePoll = regionalFunctions.https.onCall(async (data, context) => {
+    const uid = context.auth?.uid;
+    if (!uid) {
+        throw new functions.https.HttpsError("unauthenticated", "Bu işlem için giriş yapmalısınız.");
+    }
+    const { pollId } = data;
+    if (!pollId) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId gereklidir.");
+    }
+    const userSavedPollsRef = db.collection("users").doc(uid).collection("savedPolls").doc(pollId);
+    const pollRef = db.collection("polls").doc(pollId);
+    const doc = await userSavedPollsRef.get();
+    if (doc.exists) {
+        await userSavedPollsRef.delete();
+        await pollRef.set({ savedByCount: admin.firestore.FieldValue.increment(-1) }, { merge: true });
+        return { saved: false };
+    }
+    else {
+        await userSavedPollsRef.set({
+            savedAt: admin.firestore.FieldValue.serverTimestamp(),
+            pollRef: pollRef,
+        });
+        await pollRef.set({ savedByCount: admin.firestore.FieldValue.increment(1) }, { merge: true });
+        return { saved: true };
+    }
+});
+exports.incrementShareCount = regionalFunctions.https.onCall(async (data, context) => {
+    const { pollId, platform } = data;
+    if (!pollId || !platform) {
+        throw new functions.https.HttpsError("invalid-argument", "pollId ve platform gereklidir.");
+    }
+    const pollRef = db.collection("polls").doc(pollId);
+    await pollRef.set({
+        shareCounts: {
+            [platform.replace(/\./g, '_')]: admin.firestore.FieldValue.increment(1)
+        }
+    }, { merge: true });
+    return { success: true };
 });
 //# sourceMappingURL=index.js.map
