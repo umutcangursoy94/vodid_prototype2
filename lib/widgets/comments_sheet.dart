@@ -1,8 +1,49 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+
+// Etiketlenmiş metni oluşturan yardımcı fonksiyon
+Widget buildCommentText(String text, BuildContext context) {
+  final List<TextSpan> textSpans = [];
+  final RegExp mentionRegex = RegExp(r"(@\w+)");
+
+  text.splitMapJoin(
+    mentionRegex,
+    onMatch: (Match match) {
+      final mention = match.group(0)!;
+      textSpans.add(
+        TextSpan(
+          text: mention,
+          style: const TextStyle(
+            color: Colors.blue,
+            fontWeight: FontWeight.bold,
+          ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () {
+              // Gelecekte etiketlenen kullanıcının profiline gitme eklenebilir.
+            },
+        ),
+      );
+      return '';
+    },
+    onNonMatch: (String nonMatch) {
+      textSpans.add(TextSpan(text: nonMatch));
+      return '';
+    },
+  );
+
+  return RichText(
+    text: TextSpan(
+      style: DefaultTextStyle.of(context)
+          .style
+          .copyWith(fontSize: 15, height: 1.3),
+      children: textSpans,
+    ),
+  );
+}
 
 class CommentsSheet extends StatefulWidget {
   final String pollId;
@@ -33,7 +74,6 @@ class CommentsSheet extends StatefulWidget {
 }
 
 class _CommentsSheetState extends State<CommentsSheet> {
-  final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
   final _textCtrl = TextEditingController();
   final _focusNode = FocusNode();
@@ -42,18 +82,10 @@ class _CommentsSheetState extends State<CommentsSheet> {
   bool _initialScrollDone = false;
 
   CollectionReference<Map<String, dynamic>> get _commentsCol =>
-      _db.collection('polls').doc(widget.pollId).collection('comments');
-
-  DocumentReference<Map<String, dynamic>> get _pollDoc =>
-      _db.collection('polls').doc(widget.pollId);
-
-  @override
-  void dispose() {
-    _textCtrl.dispose();
-    _focusNode.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
+      FirebaseFirestore.instance
+          .collection('polls')
+          .doc(widget.pollId)
+          .collection('comments');
 
   Future<void> _sendComment() async {
     final raw = _textCtrl.text.trim();
@@ -67,32 +99,10 @@ class _CommentsSheetState extends State<CommentsSheet> {
 
     setState(() => _sending = true);
     try {
-      final user = _auth.currentUser!;
-      final userDocRef = _db.collection('users').doc(user.uid);
-
-      final pollSnap = await _pollDoc.get();
-      final pollData = pollSnap.data();
-      final pollQuestion = pollData?['question'] as String? ?? 'Anket Başlığı';
-      final pollImageUrl = pollData?['imageUrl'] as String? ?? '';
-
-      final data = <String, dynamic>{
-        'text': raw,
-        'uid': user.uid,
-        'displayName': user.displayName ?? 'Misafir',
-        'photoURL': user.photoURL,
-        'createdAt': FieldValue.serverTimestamp(),
+      final callable = FirebaseFunctions.instance.httpsCallable('addComment');
+      await callable.call({
         'pollId': widget.pollId,
-        'pollQuestion': pollQuestion,
-        'pollImageUrl': pollImageUrl,
-        'likeCount': 0,
-        'replyCount': 0,
-        'likes': {},
-      };
-
-      await _db.runTransaction((tx) async {
-        tx.set(_commentsCol.doc(), data);
-        tx.update(_pollDoc, {'commentsCount': FieldValue.increment(1)});
-        tx.update(userDocRef, {'commentsCount': FieldValue.increment(1)});
+        'text': raw,
       });
 
       _textCtrl.clear();
@@ -107,33 +117,12 @@ class _CommentsSheetState extends State<CommentsSheet> {
     }
   }
 
-  Future<void> _deleteOwnComment(
-      DocumentSnapshot<Map<String, dynamic>> snap) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null || snap.data()?['uid'] != uid) return;
-
-    try {
-      final userDocRef = _db.collection('users').doc(uid);
-
-      await _db.runTransaction((tx) async {
-        tx.delete(snap.reference);
-        tx.update(_pollDoc, {'commentsCount': FieldValue.increment(-1)});
-        tx.update(userDocRef, {'commentsCount': FieldValue.increment(-1)});
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Yorum silindi.'),
-              behavior: SnackBarBehavior.floating),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Silinemedi: $e'),
-            behavior: SnackBarBehavior.floating));
-      }
-    }
+  @override
+  void dispose() {
+    _textCtrl.dispose();
+    _focusNode.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -196,7 +185,6 @@ class _CommentsSheetState extends State<CommentsSheet> {
                         key: ValueKey(docs[i].id),
                         pollId: widget.pollId,
                         snap: docs[i],
-                        onLongPressDelete: () => _deleteOwnComment(docs[i]),
                         isHighlighted:
                             docs[i].id == widget.highlightedCommentId,
                       ),
@@ -355,6 +343,25 @@ class _CommentTileState extends State<_CommentTile> {
     }
   }
 
+  void _handleReplyTap() {
+    final commentData = widget.snap.data();
+    if (commentData == null) return;
+
+    final username = commentData['username'] as String?;
+
+    setState(() {
+      _showReplyInput = !_showReplyInput; // Her dokunuşta aç/kapa
+      if (_showReplyInput && username != null && username.isNotEmpty) {
+        _replyCtrl.text = '@$username ';
+        _replyCtrl.selection = TextSelection.fromPosition(
+          TextPosition(offset: _replyCtrl.text.length),
+        );
+      } else {
+        _replyCtrl.clear();
+      }
+    });
+  }
+
   @override
   void dispose() {
     _replyCtrl.dispose();
@@ -427,16 +434,12 @@ class _CommentTileState extends State<_CommentTile> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Text(
-                      text,
-                      style: const TextStyle(fontSize: 15, height: 1.3),
-                    ),
+                    buildCommentText(text, context),
                     const SizedBox(height: 8),
                     Row(
                       children: [
                         InkWell(
-                          onTap: () => setState(
-                              () => _showReplyInput = !_showReplyInput),
+                          onTap: _handleReplyTap,
                           child: const Text(
                             'Yanıtla',
                             style: TextStyle(
@@ -611,7 +614,7 @@ class _ReplyTile extends StatelessWidget {
                     ),
                   ],
                 ),
-                Text(text),
+                buildCommentText(text, context),
               ],
             ),
           ),
