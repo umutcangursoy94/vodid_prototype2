@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1025205651223",
+    "project_id": "vodid2",
+    "storage_bucket": "vodid2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1025205651223:android:4387cb8395510c03485952",
+        "android_client_info": {
+          "package_name": "com.example.vodid_prototype2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1025205651223-ctim37hflrk6mc45apt4fq0518aqb8c3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.vodid_prototype2",
+            "certificate_hash": "b8723889cf13dd52b529d482b78fe8dd1d421eaa"
+          }
+        },
+        {
+          "client_id": "1025205651223-3veu7m7j96tg7jc7k65puv79pj911kmi.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDr1m3HedtDGGlqjJxoujiLj31wYFRdWw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1025205651223-3veu7m7j96tg7jc7k65puv79pj911kmi.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1025205651223-ga8st7bklis6pojh4u9ma747p7mqrvvi.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.vodidPrototype2"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
