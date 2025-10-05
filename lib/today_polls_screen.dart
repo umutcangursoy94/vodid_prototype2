@@ -92,6 +92,9 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
     final userVoteRef =
         _db.collection('users').doc(uid).collection('votes').doc(pollId);
     final userDocRef = _db.collection('users').doc(uid);
+
+    final userActivityRef = userDocRef.collection('activities').doc();
+
     try {
       await _db.runTransaction((tx) async {
         final voteSnap = await tx.get(voteRef);
@@ -108,10 +111,19 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
           'pollId': pollId,
           'question': question,
         });
+
+        tx.set(userActivityRef, {
+          'type': 'vote',
+          'timestamp': FieldValue.serverTimestamp(),
+          'pollId': pollId,
+          'choice': choice,
+          'pollQuestion': question,
+        });
+
         tx.update(userDocRef, {'votesCount': FieldValue.increment(1)});
         tx.update(pollRef, {
           'counts.$choice': FieldValue.increment(1),
-          'totalVotes': FieldValue.increment(1) // GÜNCELLENDİ
+          'totalVotes': FieldValue.increment(1)
         });
       });
     } catch (e) {
@@ -591,7 +603,8 @@ class _RightActionBarState extends State<_RightActionBar> {
   @override
   void initState() {
     super.initState();
-    _functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+    // DEĞİŞİKLİK: Bölge tanımı kaldırıldı, varsayılan (us-central1) kullanılacak.
+    _functions = FirebaseFunctions.instance;
 
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {

@@ -6,11 +6,14 @@ import 'package:vodid_prototype2/generic_list_screen.dart';
 import 'package:vodid_prototype2/today_polls_screen.dart';
 import 'package:vodid_prototype2/user_profile_screen.dart';
 
+// Kendi profilimiz için ana sayfa widget'ı
 class MyVotesScreen extends StatelessWidget {
   const MyVotesScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
     return Scaffold(
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -19,49 +22,22 @@ class MyVotesScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 8.0),
             child: Text(
-              'Son Oylar',
+              'Son Aktiviteler',
               style: Theme.of(context)
                   .textTheme
                   .titleLarge
                   ?.copyWith(fontSize: 20),
             ),
           ),
+          // YENİ: Aktivite akışını, mevcut kullanıcı ID'si ile burada çağırıyoruz
           Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: _ProfileHeaderState()
-                  ._myVotesStream(FirebaseAuth.instance.currentUser?.uid),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snap.hasError) {
-                  return Center(child: Text('Error: ${snap.error}'));
-                }
-                final docs = snap.data?.docs ?? [];
-                if (docs.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(24.0),
-                      child: Text(
-                        'Henüz hiç oy kullanmadın.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 18, color: Colors.grey),
-                      ),
-                    ),
-                  );
-                }
-
-                return ListView.separated(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  itemCount: docs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    return _RichVoteCard(snap: docs[index]);
-                  },
-                );
-              },
-            ),
+            child: uid == null
+                ? const Center(child: Text("Giriş yapmalısınız."))
+                : ActivityFeedWidget(
+                    userId: uid,
+                    isOwnProfile:
+                        true, // Kendi profilimiz olduğunu belirtiyoruz
+                  ),
           ),
         ],
       ),
@@ -69,6 +45,212 @@ class MyVotesScreen extends StatelessWidget {
   }
 }
 
+// YENİ: Diğer profil sayfasında da kullanmak üzere ayrılmış aktivite akışı widget'ı
+class ActivityFeedWidget extends StatelessWidget {
+  final String userId;
+  final bool isOwnProfile;
+
+  const ActivityFeedWidget({
+    super.key,
+    required this.userId,
+    required this.isOwnProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('activities')
+          .orderBy('timestamp', descending: true)
+          .snapshots(),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snap.hasError) {
+          return Center(child: Text('Hata: ${snap.error}'));
+        }
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Text(
+                isOwnProfile
+                    ? 'Henüz bir aktiviten bulunmuyor.'
+                    : 'Kullanıcının henüz bir aktivitesi yok.',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18, color: Colors.grey),
+              ),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: docs.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            return _ActivityCard(
+              snap: docs[index],
+              isOwnProfile: isOwnProfile, // Bilgiyi aktivite kartına iletiyoruz
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+// Aktivite kartı son hali
+class _ActivityCard extends StatelessWidget {
+  final DocumentSnapshot<Map<String, dynamic>> snap;
+  final bool isOwnProfile; // Profilin kime ait olduğu bilgisi
+
+  const _ActivityCard({required this.snap, required this.isOwnProfile});
+
+  String _formatTime(DateTime? dt) {
+    if (dt == null) return '';
+    return DateFormat('d MMM yyyy, HH:mm', 'tr_TR').format(dt);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = snap.data() ?? {};
+    final type = data['type'] as String?;
+    final pollId = data['pollId'] as String?;
+    final commentId = data['commentId'] as String?;
+    final pollQuestion = data['pollQuestion'] as String? ?? 'bir anket';
+    final timestamp = data['timestamp'] as Timestamp?;
+    final date = timestamp?.toDate();
+
+    final voteVerb = isOwnProfile ? 'verdin' : 'verdi';
+    final commentVerb = isOwnProfile ? 'yaptın' : 'yaptı';
+    final replyVerb = isOwnProfile ? 'verdin' : 'verdi';
+    final likeVerb = isOwnProfile ? 'beğendin' : 'beğendi';
+
+    Widget titleWidget;
+    String subtitle;
+    IconData icon;
+
+    switch (type) {
+      case 'vote':
+        icon = Icons.poll_outlined;
+        titleWidget = Text(
+          '"$pollQuestion" anketine oy $voteVerb.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        );
+        subtitle = 'Seçim: ${data['choice']}';
+        break;
+      case 'comment':
+        icon = Icons.chat_bubble_outline_rounded;
+        titleWidget = Text(
+          '"$pollQuestion" anketine yorum $commentVerb.',
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        );
+        subtitle = data['text'] as String? ?? '';
+        break;
+      case 'reply':
+        icon = Icons.reply_outlined;
+        titleWidget = RichText(
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          text: TextSpan(
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+            children: [
+              TextSpan(text: 'Bir yoruma yanıt $replyVerb. '),
+              TextSpan(
+                // DÜZELTME: Tırnak işaretleri kaldırıldı
+                text: '($pollQuestion anketine)',
+                style: TextStyle(
+                    color: Colors.grey[600], fontWeight: FontWeight.normal),
+              ),
+            ],
+          ),
+        );
+        subtitle = data['text'] as String? ?? '';
+        break;
+      case 'like':
+        icon = Icons.favorite;
+        titleWidget = RichText(
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          text: TextSpan(
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+            children: [
+              TextSpan(text: 'Bir yorumu $likeVerb. '),
+              TextSpan(
+                // DÜZELTME: Tırnak işaretleri kaldırıldı
+                text: '($pollQuestion anketine)',
+                style: TextStyle(
+                    color: Colors.grey[600], fontWeight: FontWeight.normal),
+              ),
+            ],
+          ),
+        );
+        subtitle = data['text'] as String? ?? '';
+        break;
+      default:
+        icon = Icons.history;
+        titleWidget = const Text('Bilinmeyen bir aktivite.');
+        subtitle = '';
+    }
+
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.black.withAlpha(20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        leading: CircleAvatar(child: Icon(icon, size: 20)),
+        title: titleWidget,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+            ),
+            if (date != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _formatTime(date),
+                style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+            ],
+          ],
+        ),
+        onTap: () {
+          if (pollId == null) return;
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TodayPollsScreen(
+              initialPollId: pollId,
+              showCommentsForPollId: (type != 'vote') ? pollId : null,
+              highlightedCommentId: commentId,
+            ),
+          ));
+        },
+        isThreeLine: true,
+      ),
+    );
+  }
+}
+
+// BU KISIMLAR DEĞİŞMEDİ, AYNI KALIYOR
 class _ProfileHeader extends StatefulWidget {
   const _ProfileHeader();
 
@@ -117,18 +299,6 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
         emptyMessage: emptyMessage,
       ),
     ));
-  }
-
-  Stream<QuerySnapshot<Map<String, dynamic>>> _myVotesStream(String? uid) {
-    if (uid == null) {
-      return const Stream<QuerySnapshot<Map<String, dynamic>>>.empty();
-    }
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('votes')
-        .orderBy('votedAt', descending: true)
-        .snapshots();
   }
 
   Stream<QuerySnapshot> _commentsStream(String uid) {
@@ -218,9 +388,7 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildStatColumn('Oylar', voteCount, () {
-                            // Detay sayfası artık yeni tasarımı kullanacak.
-                          }),
+                          _buildStatColumn('Oylar', voteCount, () {}),
                           _buildStatColumn('Yorumlar', commentCount, () {
                             _navigateToDetails(
                               context,
@@ -374,298 +542,6 @@ class _ProfileHeaderState extends State<_ProfileHeader> {
   }
 }
 
-class _RichVoteCard extends StatefulWidget {
-  final DocumentSnapshot snap;
-
-  const _RichVoteCard({required this.snap});
-
-  @override
-  State<_RichVoteCard> createState() => _RichVoteCardState();
-}
-
-class _RichVoteCardState extends State<_RichVoteCard> {
-  DocumentSnapshot<Map<String, dynamic>>? _pollSnap;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchPollData();
-  }
-
-  Future<void> _fetchPollData() async {
-    final data = widget.snap.data() as Map<String, dynamic>? ?? {};
-    final pollId = data['pollId'] as String?;
-    if (pollId == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-    try {
-      final pollDoc = await FirebaseFirestore.instance
-          .collection('polls')
-          .doc(pollId)
-          .get();
-      if (mounted) {
-        setState(() {
-          _pollSnap = pollDoc;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  String _formatTime(DateTime? dt) {
-    if (dt == null) return '';
-    return DateFormat('d MMM y, HH:mm').format(dt);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final voteData = widget.snap.data() as Map<String, dynamic>? ?? {};
-    final userChoice = voteData['choice'] as String? ?? 'Oy bulunamadı.';
-    final pollId = voteData['pollId'] as String?;
-    final ts = voteData['votedAt'];
-    DateTime? votedAt;
-    if (ts is Timestamp) votedAt = ts.toDate();
-
-    final pollData = _pollSnap?.data();
-    final pollQuestion = pollData?['question'] as String? ?? 'Anket';
-    final pollImageUrl = pollData?['imageUrl'] as String? ?? '';
-    final hasImage = pollImageUrl.isNotEmpty;
-
-    final counts = Map<String, dynamic>.from(pollData?['counts'] ?? {});
-    final options = (pollData?['options'] as List<dynamic>?)
-            ?.map((e) => e.toString())
-            .toList() ??
-        [];
-    if (options.isEmpty && counts.isNotEmpty) {
-      options.addAll(counts.keys);
-      options.sort();
-    }
-    final totalVotes =
-        counts.values.fold<int>(0, (prev, item) => prev + (item as int));
-
-    return InkWell(
-      onTap: () {
-        if (pollId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Bu oyun anketi bulunamadı.')),
-          );
-          return;
-        }
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => TodayPollsScreen(initialPollId: pollId),
-        ));
-      },
-      borderRadius: BorderRadius.circular(16.0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            image: hasImage
-                ? DecorationImage(
-                    image: NetworkImage(pollImageUrl),
-                    fit: BoxFit.cover,
-                    colorFilter: ColorFilter.mode(
-                      // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                      Colors.black.withAlpha(153),
-                      BlendMode.darken,
-                    ),
-                  )
-                : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Oy verilen anket:',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                    color: hasImage
-                        ? Colors.white.withAlpha(204)
-                        : Colors.grey[600],
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  pollQuestion,
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: hasImage
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.onSurface,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                Divider(
-                    height: 24,
-                    color: hasImage ? Colors.white54 : Colors.grey[300]),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                    color: hasImage
-                        ? Colors.white.withAlpha(38)
-                        : Theme.of(context).scaffoldBackgroundColor,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 18,
-                        color: hasImage
-                            ? Colors.white
-                            : Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withAlpha(180),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Seçimin: $userChoice',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: hasImage
-                              ? Colors.white
-                              : Theme.of(context)
-                                  .colorScheme
-                                  .primary
-                                  .withAlpha(180),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (_isLoading)
-                  const Center(
-                      child: Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white)),
-                  ))
-                else if (totalVotes > 0)
-                  Column(
-                    children: [
-                      for (final opt in options)
-                        _VoteResultBar(
-                          label: opt,
-                          value: counts[opt] ?? 0,
-                          total: totalVotes,
-                          isUsersChoice: opt == userChoice,
-                          hasImage: hasImage,
-                        ),
-                    ],
-                  ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Text(
-                    _formatTime(votedAt),
-                    style: TextStyle(
-                      // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                      color:
-                          hasImage ? Colors.white.withAlpha(204) : Colors.grey,
-                      fontSize: 13,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VoteResultBar extends StatelessWidget {
-  final String label;
-  final int value;
-  final int total;
-  final bool isUsersChoice;
-  final bool hasImage;
-
-  const _VoteResultBar({
-    required this.label,
-    required this.value,
-    required this.total,
-    required this.isUsersChoice,
-    required this.hasImage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final percent = total == 0 ? 0.0 : value / total;
-    final pctText = (percent * 100).toStringAsFixed(0);
-    final textColor =
-        hasImage ? Colors.white : Theme.of(context).colorScheme.onSurface;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                  child: Text(label,
-                      style: TextStyle(
-                          color: textColor,
-                          fontSize: 15,
-                          fontWeight: isUsersChoice
-                              ? FontWeight.bold
-                              : FontWeight.normal))),
-              Text('$pctText%',
-                  style: TextStyle(
-                      color: textColor,
-                      fontSize: 15,
-                      fontWeight:
-                          isUsersChoice ? FontWeight.bold : FontWeight.normal)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: percent,
-              minHeight: 6,
-              // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-              backgroundColor:
-                  hasImage ? Colors.white.withAlpha(51) : Colors.grey.shade300,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                isUsersChoice
-                    ? (hasImage
-                        ? Colors.white
-                        : Theme.of(context).colorScheme.primary)
-                    : (hasImage
-                        // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                        ? Colors.white.withAlpha(128)
-                        : Colors.grey.shade500),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _UserListItem extends StatelessWidget {
   final String userId;
   final Map<String, dynamic> userData;
@@ -714,117 +590,35 @@ class _CommentListItem extends StatelessWidget {
     if (ts is Timestamp) created = ts.toDate();
 
     final pollId = data['pollId'] as String?;
-    final pollQuestion = data['pollQuestion'] as String? ?? 'Anket';
-    final pollImageUrl = data['pollImageUrl'] as String? ?? '';
-    final hasImage = pollImageUrl.isNotEmpty;
 
-    return InkWell(
-      onTap: () {
-        if (pollId == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Bu yorumun anketi bulunamadı.')),
-          );
-          return;
-        }
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => TodayPollsScreen(
-            initialPollId: pollId,
-            showCommentsForPollId: pollId,
-            highlightedCommentId: snap.id,
-          ),
-        ));
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16.0),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            image: hasImage
-                ? DecorationImage(
-                    image: NetworkImage(pollImageUrl),
-                    fit: BoxFit.cover,
-                    colorFilter: ColorFilter.mode(
-                      // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                      Colors.black.withAlpha(128),
-                      BlendMode.darken,
-                    ),
-                  )
-                : null,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                  hasImage ? Colors.black.withAlpha(51) : Colors.transparent,
-                  hasImage ? Colors.black.withAlpha(179) : Colors.transparent,
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                stops: const [0.0, 0.8],
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Yorum yapılan anket:',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                      color: hasImage
-                          ? Colors.white.withAlpha(204)
-                          : Colors.grey[600],
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    pollQuestion,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: hasImage
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.onSurface,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Divider(
-                      height: 24,
-                      color: hasImage ? Colors.white38 : Colors.grey[300]),
-                  Text(
-                    text,
-                    style: TextStyle(
-                      fontSize: 17,
-                      height: 1.4,
-                      color: hasImage
-                          ? Colors.white
-                          : Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Text(
-                      _formatTime(created),
-                      style: TextStyle(
-                        // --- DÜZELTME: Deprecated 'withOpacity' kaldırıldı. ---
-                        color: hasImage
-                            ? Colors.white.withAlpha(179)
-                            : Colors.grey,
-                        fontSize: 13,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+    return Card(
+      elevation: 2,
+      shadowColor: Colors.black.withAlpha(20),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        title: Text('"$text"'),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Text(
+            '${_formatTime(created)} tarihinde yorum yapıldı',
+            style: const TextStyle(color: Colors.grey),
           ),
         ),
+        onTap: () {
+          if (pollId == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Bu yorumun anketi bulunamadı.')),
+            );
+            return;
+          }
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => TodayPollsScreen(
+              initialPollId: pollId,
+              showCommentsForPollId: pollId,
+              highlightedCommentId: snap.id,
+            ),
+          ));
+        },
       ),
     );
   }

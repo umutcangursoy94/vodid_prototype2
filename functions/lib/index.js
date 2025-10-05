@@ -40,10 +40,16 @@ exports.addComment = regionalFunctions.https.onCall(async (data, context) => {
     if (!userDoc.exists) {
         throw new functions.https.HttpsError("not-found", "Kullanıcı bulunamadı.");
     }
+    const pollDoc = await db.collection("polls").doc(pollId).get();
+    if (!pollDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Anket bulunamadı.");
+    }
     const userData = userDoc.data();
-    const pollDocRef = db.collection("polls").doc(pollId);
+    const pollData = pollDoc.data();
+    const pollDocRef = pollDoc.ref;
     const mentionedUids = await parseMentions(text);
     const newCommentRef = pollDocRef.collection("comments").doc();
+    const userActivityRef = db.collection("users").doc(uid).collection("activities").doc();
     const batch = db.batch();
     batch.set(newCommentRef, {
         text: text,
@@ -57,6 +63,14 @@ exports.addComment = regionalFunctions.https.onCall(async (data, context) => {
         replyCount: 0,
         likes: {},
         mentions: mentionedUids,
+    });
+    batch.set(userActivityRef, {
+        type: "comment",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        pollId: pollId,
+        commentId: newCommentRef.id,
+        text: text,
+        pollQuestion: pollData.question,
     });
     batch.update(pollDocRef, { commentsCount: admin.firestore.FieldValue.increment(1) });
     batch.update(userDoc.ref, { commentsCount: admin.firestore.FieldValue.increment(1) });
@@ -73,10 +87,17 @@ exports.addReply = regionalFunctions.https.onCall(async (data, context) => {
         throw new functions.https.HttpsError("invalid-argument", "pollId, commentId, ve text gereklidir.");
     }
     const user = await admin.auth().getUser(uid);
+    const pollDoc = await db.collection("polls").doc(pollId).get();
+    if (!pollDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Anket bulunamadı.");
+    }
+    const pollData = pollDoc.data();
     const commentRef = db.collection("polls").doc(pollId).collection("comments").doc(commentId);
     const replyRef = commentRef.collection("replies").doc();
+    const userActivityRef = db.collection("users").doc(uid).collection("activities").doc();
     const mentionedUids = await parseMentions(text);
-    await replyRef.set({
+    const batch = db.batch();
+    batch.set(replyRef, {
         text: text,
         uid: uid,
         displayName: user.displayName || "Anonim",
@@ -84,9 +105,19 @@ exports.addReply = regionalFunctions.https.onCall(async (data, context) => {
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         mentions: mentionedUids,
     });
-    await commentRef.update({
+    batch.set(userActivityRef, {
+        type: "reply",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+        pollId: pollId,
+        commentId: commentId,
+        replyId: replyRef.id,
+        text: text,
+        pollQuestion: pollData.question,
+    });
+    batch.update(commentRef, {
         replyCount: admin.firestore.FieldValue.increment(1),
     });
+    await batch.commit();
     return { success: true };
 });
 exports.likeComment = regionalFunctions.https.onCall(async (data, context) => {
@@ -103,18 +134,43 @@ exports.likeComment = regionalFunctions.https.onCall(async (data, context) => {
     if (!commentDoc.exists) {
         throw new functions.https.HttpsError("not-found", "Yorum bulunamadı.");
     }
+    const pollDoc = await db.collection("polls").doc(pollId).get();
+    if (!pollDoc.exists) {
+        throw new functions.https.HttpsError("not-found", "Anket bulunamadı.");
+    }
     const likes = commentDoc.data()?.likes || {};
     const likeCount = commentDoc.data()?.likeCount || 0;
+    const userActivityQuery = db.collection("users").doc(uid).collection("activities")
+        .where("type", "==", "like")
+        .where("commentId", "==", commentId)
+        .limit(1);
+    const batch = db.batch();
+    let isLikedNow = false;
     if (likes[uid]) {
         delete likes[uid];
-        await commentRef.update({ likes, likeCount: likeCount - 1 });
-        return { liked: false };
+        batch.update(commentRef, { likes, likeCount: likeCount - 1 });
+        isLikedNow = false;
+        const activitySnap = await userActivityQuery.get();
+        if (!activitySnap.empty) {
+            batch.delete(activitySnap.docs[0].ref);
+        }
     }
     else {
         likes[uid] = true;
-        await commentRef.update({ likes, likeCount: likeCount + 1 });
-        return { liked: true };
+        batch.update(commentRef, { likes, likeCount: likeCount + 1 });
+        isLikedNow = true;
+        const userActivityRef = db.collection("users").doc(uid).collection("activities").doc();
+        batch.set(userActivityRef, {
+            type: "like",
+            timestamp: admin.firestore.FieldValue.serverTimestamp(),
+            pollId: pollId,
+            commentId: commentId,
+            text: commentDoc.data()?.text,
+            pollQuestion: pollDoc.data()?.question,
+        });
     }
+    await batch.commit();
+    return { liked: isLikedNow };
 });
 exports.toggleSavePoll = regionalFunctions.https.onCall(async (data, context) => {
     const uid = context.auth?.uid;

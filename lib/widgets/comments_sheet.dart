@@ -81,6 +81,10 @@ class _CommentsSheetState extends State<CommentsSheet> {
   bool _sending = false;
   bool _initialScrollDone = false;
 
+  // DEĞİŞİKLİK: Fonksiyonları doğru bölgeden çağırmak için bunu tekrar ekliyoruz.
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'europe-west1');
+
   CollectionReference<Map<String, dynamic>> get _commentsCol =>
       FirebaseFirestore.instance
           .collection('polls')
@@ -99,7 +103,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
 
     setState(() => _sending = true);
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('addComment');
+      final callable = _functions.httpsCallable('addComment');
       await callable.call({
         'pollId': widget.pollId,
         'text': raw,
@@ -293,6 +297,10 @@ class _CommentTileState extends State<_CommentTile> {
   final _replyCtrl = TextEditingController();
   bool _isSendingReply = false;
 
+  // DEĞİŞİKLİK: Fonksiyonları doğru bölgeden çağırmak için bunu tekrar ekliyoruz.
+  final FirebaseFunctions _functions =
+      FirebaseFunctions.instanceFor(region: 'europe-west1');
+
   String _formatTime(DateTime? dt) {
     if (dt == null) return '';
     return DateFormat('d MMM, HH:mm').format(dt);
@@ -300,7 +308,7 @@ class _CommentTileState extends State<_CommentTile> {
 
   Future<void> _likeComment() async {
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('likeComment');
+      final callable = _functions.httpsCallable('likeComment');
       await callable.call({
         'pollId': widget.pollId,
         'commentId': widget.snap.id,
@@ -320,7 +328,7 @@ class _CommentTileState extends State<_CommentTile> {
 
     setState(() => _isSendingReply = true);
     try {
-      final callable = FirebaseFunctions.instance.httpsCallable('addReply');
+      final callable = _functions.httpsCallable('addReply');
       await callable.call({
         'pollId': widget.pollId,
         'commentId': widget.snap.id,

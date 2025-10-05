@@ -13,7 +13,6 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
   String _log = 'Hazır. Butona basarak anket verilerini güncelleyebilirsiniz.';
   final _db = FirebaseFirestore.instance;
 
-  /// Gündem anketlerini ve hikayelerini her zaman sıfırdan, doğru formatla oluşturur.
   Future<void> _createAgendaPolls() async {
     setState(() {
       _busy = true;
@@ -30,36 +29,29 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         final docId = _slugify(pollData['question']);
         final pollRef = pollsCollection.doc(docId);
 
-        // Arama için anahtar kelimeler VE ÖN EKLER (PREFIXES) oluştur
         final question = pollData['question'] as String;
         final words = question
             .toLowerCase()
             .split(' ')
             .where((s) => s.isNotEmpty)
-            .toSet(); // Tekrar eden kelimeleri engellemek için Set kullanıyoruz
+            .toSet();
 
         final searchIndex = <String>{};
         for (final word in words) {
-          // Her kelimenin 3 harften başlayan tüm varyasyonlarını ekle
           for (int j = 3; j <= word.length; j++) {
             searchIndex.add(word.substring(0, j));
           }
-          // Kelimenin kendisini de ekleyelim (3 harften kısaysa diye)
           searchIndex.add(word);
         }
 
-        // DEĞİŞİKLİK: set(..., SetOptions(merge: true)) kullanıyoruz.
-        // Bu sayede belge yoksa oluşturulur, varsa sadece belirtilen alanlar güncellenir.
-        // videoUrl bu map içinde olmadığı için ASLA güncellenmeyecek.
         writeBatch.set(
             pollRef,
             {
               'question': pollData['question'],
               'question_lowercase':
                   (pollData['question'] as String).toLowerCase(),
-              'question_keywords':
-                  words.toList(), // Orijinal kelimeleri de tutalım
-              'question_search_index': searchIndex.toList(), // YENİ ARAMA ALANI
+              'question_keywords': words.toList(),
+              'question_search_index': searchIndex.toList(),
               'options': pollData['options'],
               'news_summary': pollData['news_summary'],
               'order': i + 1,
@@ -82,14 +74,14 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
     }
   }
 
-  /// Tüm oyları, yorumları ve sayaçları sıfırlayan fonksiyon.
+  /// GÜNCELLENDİ: Tüm oyları, yorumları, beğenileri, aktiviteleri ve sayaçları sıfırlar.
   Future<void> _resetAllData() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Tüm Verileri Sıfırla'),
         content: const Text(
-            'Bu işlem geri alınamaz. Tüm kullanıcıların oyları, yorumları ve sayaçları sıfırlanacak. Emin misiniz?'),
+            'Bu işlem geri alınamaz. Tüm kullanıcıların oyları, yorumları, beğenileri, aktiviteleri ve tüm sayaçlar sıfırlanacak. Emin misiniz?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -98,7 +90,7 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
             style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Evet, Sıfırla'),
+            child: const Text('Evet, Hepsini Sıfırla'),
           ),
         ],
       ),
@@ -112,12 +104,23 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
     });
 
     try {
-      final batch = _db.batch();
+      // Toplu yazma işlemini başlat
+      WriteBatch batch = _db.batch();
+      int writeCount = 0;
 
-      // 1. Tüm anketlerin sayaçlarını sıfırla ve alt koleksiyonlarını sil
+      // Toplu işlemleri yönetmek için yardımcı fonksiyon
+      Future<void> commitBatchIfNeeded() async {
+        if (writeCount >= 400) {
+          await batch.commit();
+          batch = _db.batch();
+          writeCount = 0;
+        }
+      }
+
+      // 1. Tüm anketlerin alt koleksiyonlarını sil ve sayaçları sıfırla
       final pollsSnap = await _db.collection('polls').get();
       for (final pollDoc in pollsSnap.docs) {
-        // Alt koleksiyonları (yorumlar, oylar) sil
+        // Yorumlar ve yanıtları sil
         final commentsSnap =
             await pollDoc.reference.collection('comments').get();
         for (final commentDoc in commentsSnap.docs) {
@@ -125,13 +128,20 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
               await commentDoc.reference.collection('replies').get();
           for (final replyDoc in repliesSnap.docs) {
             batch.delete(replyDoc.reference);
+            writeCount++;
+            await commitBatchIfNeeded();
           }
           batch.delete(commentDoc.reference);
+          writeCount++;
+          await commitBatchIfNeeded();
         }
 
+        // Oyları sil
         final votesSnap = await pollDoc.reference.collection('votes').get();
         for (final voteDoc in votesSnap.docs) {
           batch.delete(voteDoc.reference);
+          writeCount++;
+          await commitBatchIfNeeded();
         }
 
         // Ana sayaçları sıfırla
@@ -141,29 +151,61 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
           'commentsCount': 0,
           'counts': zeroCounts,
           'totalVotes': 0,
+          'savedByCount': 0,
+          'shareCounts': {},
         });
+        writeCount++;
+        await commitBatchIfNeeded();
       }
 
-      // 2. Tüm kullanıcıların sayaçlarını sıfırla ve alt koleksiyonlarını sil
+      // 2. Tüm kullanıcıların alt koleksiyonlarını sil ve sayaçları sıfırla
       final usersSnap = await _db.collection('users').get();
       for (final userDoc in usersSnap.docs) {
         // 'votes' alt koleksiyonunu sil
         final userVotesSnap = await userDoc.reference.collection('votes').get();
         for (final voteDoc in userVotesSnap.docs) {
           batch.delete(voteDoc.reference);
+          writeCount++;
+          await commitBatchIfNeeded();
+        }
+
+        // 'activities' alt koleksiyonunu sil
+        final userActivitiesSnap =
+            await userDoc.reference.collection('activities').get();
+        for (final activityDoc in userActivitiesSnap.docs) {
+          batch.delete(activityDoc.reference);
+          writeCount++;
+          await commitBatchIfNeeded();
+        }
+
+        // 'savedPolls' alt koleksiyonunu sil
+        final userSavedPollsSnap =
+            await userDoc.reference.collection('savedPolls').get();
+        for (final savedDoc in userSavedPollsSnap.docs) {
+          batch.delete(savedDoc.reference);
+          writeCount++;
+          await commitBatchIfNeeded();
         }
 
         // Kullanıcı sayaçlarını sıfırla
         batch.update(userDoc.reference, {
           'commentsCount': 0,
           'votesCount': 0,
+          'followersCount': 0,
+          'followingCount': 0,
         });
+        writeCount++;
+        await commitBatchIfNeeded();
       }
 
-      await batch.commit();
+      // Kalan işlemleri commit et
+      if (writeCount > 0) {
+        await batch.commit();
+      }
 
       setState(() {
-        _log = '✅ BAŞARILI: Tüm oylar, yorumlar ve sayaçlar sıfırlandı!';
+        _log =
+            '✅ BAŞARILI: Tüm oylar, yorumlar, aktiviteler ve sayaçlar sıfırlandı!';
       });
     } catch (e) {
       setState(
@@ -228,7 +270,7 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
                 icon: const Icon(Icons.delete_forever_outlined),
-                label: const Text('Tüm Oyları ve Yorumları Sıfırla',
+                label: const Text('Tüm Verileri Sıfırla',
                     style: TextStyle(fontSize: 16)),
               ),
             ],

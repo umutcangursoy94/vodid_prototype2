@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:vodid_prototype2/my_votes_screen.dart'; // YENİ: ActivityFeedWidget'ı import ediyoruz
 
-/// Herhangi bir kullanıcının profilini göstermek için kullanılan genel sayfa.
 class UserProfileScreen extends StatefulWidget {
   final String userId;
 
@@ -25,7 +25,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _checkIfFollowing();
   }
 
-  /// Mevcut kullanıcının bu profili takip edip etmediğini kontrol eder.
   Future<void> _checkIfFollowing() async {
     if (_auth.currentUser == null) {
       setState(() => _isLoadingFollowStatus = false);
@@ -47,7 +46,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  /// Takip etme ve takipten çıkarma işlemlerini yönetir.
   Future<void> _toggleFollow() async {
     if (_auth.currentUser == null) {
       if (mounted) {
@@ -76,7 +74,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           currentUserData.data()?['displayName'] ?? 'Bir Kullanıcı';
 
       if (_isFollowing) {
-        // --- Takipten Çıkar ---
         batch.delete(followingRef);
         batch.delete(followersRef);
         batch.update(
@@ -84,7 +81,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         batch.update(
             profileUserRef, {'followersCount': FieldValue.increment(-1)});
       } else {
-        // --- Takip Et ---
         batch.set(followingRef, {
           'followedAt': FieldValue.serverTimestamp(),
         });
@@ -148,93 +144,114 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           final followersCount = userData['followersCount'] as int? ?? 0;
           final followingCount = userData['followingCount'] as int? ?? 0;
 
-          return Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: theme.colorScheme.surface,
-                      backgroundImage:
-                          photoURL != null ? NetworkImage(photoURL) : null,
-                      child: photoURL == null
-                          ? Icon(Icons.person_outline,
-                              size: 40, color: Colors.grey.shade400)
-                          : null,
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: theme.colorScheme.surface,
+                          backgroundImage:
+                              photoURL != null ? NetworkImage(photoURL) : null,
+                          child: photoURL == null
+                              ? Icon(Icons.person_outline,
+                                  size: 40, color: Colors.grey.shade400)
+                              : null,
+                        ),
+                        const SizedBox(width: 20),
+                        Expanded(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildStatColumn('Oylar', voteCount),
+                              _buildStatColumn('Yorumlar', commentCount),
+                              _buildStatColumn('Takipçi', followersCount),
+                              _buildStatColumn('Takip', followingCount),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildStatColumn('Oylar', voteCount),
-                          _buildStatColumn('Yorumlar', commentCount),
-                          _buildStatColumn('Takipçi', followersCount),
-                          _buildStatColumn('Takip', followingCount),
-                        ],
+                    const SizedBox(height: 16),
+                    Text(
+                      displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
                       ),
                     ),
+                    if (username != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '@$username',
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: Colors.grey[600]),
+                      ),
+                    ],
+                    const SizedBox(height: 16),
+                    if (!isViewingOwnProfile)
+                      SizedBox(
+                        width: double.infinity,
+                        child: _isLoadingFollowStatus
+                            ? const Center(
+                                child: Padding(
+                                padding: EdgeInsets.all(8.0),
+                                child: SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2)),
+                              ))
+                            : _isFollowing
+                                ? OutlinedButton(
+                                    onPressed: _isProcessingFollow
+                                        ? null
+                                        : _toggleFollow,
+                                    child: const Text('Takipten Çıkar'),
+                                  )
+                                : ElevatedButton(
+                                    onPressed: _isProcessingFollow
+                                        ? null
+                                        : _toggleFollow,
+                                    child: const Text('Takip Et'),
+                                  ),
+                      )
+                    else
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () {},
+                          child: const Text('Profili Düzenle'),
+                        ),
+                      ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                // --- GÜNCELLENDİ: Kullanıcı adı eklendi ---
-                Text(
-                  displayName,
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+                child: Text(
+                  'Son Aktiviteler',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontSize: 20),
                 ),
-                if (username != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    '@$username',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: Colors.grey[600]),
-                  ),
-                ],
-                // --- GÜNCELLEME SONU ---
-                const SizedBox(height: 16),
-                if (!isViewingOwnProfile)
-                  SizedBox(
-                    width: double.infinity,
-                    child: _isLoadingFollowStatus
-                        ? const Center(
-                            child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: SizedBox(
-                                height: 20,
-                                width: 20,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2)),
-                          ))
-                        : _isFollowing
-                            ? OutlinedButton(
-                                onPressed:
-                                    _isProcessingFollow ? null : _toggleFollow,
-                                child: const Text('Takipten Çıkar'),
-                              )
-                            : ElevatedButton(
-                                onPressed:
-                                    _isProcessingFollow ? null : _toggleFollow,
-                                child: const Text('Takip Et'),
-                              ),
-                  )
-                else
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: () {
-                        // Kendi profilini düzenleme sayfasına yönlendirme eklenebilir
-                      },
-                      child: const Text('Profili Düzenle'),
-                    ),
-                  ),
-              ],
-            ),
+              ),
+              // YENİ: Aktivite akışını bu profile bakılan kullanıcı ID'si ile çağırıyoruz
+              Expanded(
+                child: ActivityFeedWidget(
+                  userId: widget.userId,
+                  isOwnProfile: isViewingOwnProfile,
+                ),
+              ),
+            ],
           );
         },
       ),
