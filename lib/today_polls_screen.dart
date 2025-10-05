@@ -109,7 +109,10 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
           'question': question,
         });
         tx.update(userDocRef, {'votesCount': FieldValue.increment(1)});
-        tx.update(pollRef, {'counts.$choice': FieldValue.increment(1)});
+        tx.update(pollRef, {
+          'counts.$choice': FieldValue.increment(1),
+          'totalVotes': FieldValue.increment(1) // GÜNCELLENDİ
+        });
       });
     } catch (e) {
       if (mounted) {
@@ -626,9 +629,7 @@ class _RightActionBarState extends State<_RightActionBar> {
     }
   }
 
-  /// KESİN OLARAK DÜZELTİLMİŞ PAYLAŞIM FONKSİYONU
   Future<void> _sharePoll() async {
-    // HATA DÜZELTİLDİ: Artık 'Share.share' metodu kullanılıyor.
     final result = await Share.share(
       'Vodid anketini gördün mü? "${widget.pollQuestion}" #vodid',
       subject: 'Vodid Anketi',
@@ -639,7 +640,6 @@ class _RightActionBarState extends State<_RightActionBar> {
         final callable = _functions.httpsCallable('incrementShareCount');
         await callable.call({
           'pollId': widget.pollId,
-          // result.raw içinde hangi uygulamayla paylaşıldığı bilgisi olabilir.
           'platform': result.raw.isNotEmpty ? result.raw : 'shared',
         });
       } catch (e) {

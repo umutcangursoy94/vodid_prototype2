@@ -10,55 +10,73 @@ class DevAdminSeedScreen extends StatefulWidget {
 
 class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
   bool _busy = false;
-  String _log =
-      'Hazır. Butona basarak 10 adet gündem anketini oluşturabilirsiniz.';
+  String _log = 'Hazır. Butona basarak anket verilerini güncelleyebilirsiniz.';
   final _db = FirebaseFirestore.instance;
 
   /// Gündem anketlerini ve hikayelerini her zaman sıfırdan, doğru formatla oluşturur.
   Future<void> _createAgendaPolls() async {
     setState(() {
       _busy = true;
-      _log = '10 yeni tematik anket oluşturuluyor...';
+      _log = '10 anketin arama indeksi güncelleniyor...';
     });
 
     try {
       final pollsCollection = _db.collection('polls');
       final List<Map<String, dynamic>> agendaPolls = _getPollsList();
-      final createBatch = _db.batch();
+      final writeBatch = _db.batch();
 
       for (int i = 0; i < agendaPolls.length; i++) {
         final pollData = agendaPolls[i];
-
         final docId = _slugify(pollData['question']);
-        final newPollRef = pollsCollection.doc(docId);
+        final pollRef = pollsCollection.doc(docId);
 
-        final options = pollData['options'] as List<String>;
-        final initialCounts = {for (var option in options) option: 0};
-        const initialCommentsCount = 0;
+        // Arama için anahtar kelimeler VE ÖN EKLER (PREFIXES) oluştur
+        final question = pollData['question'] as String;
+        final words = question
+            .toLowerCase()
+            .split(' ')
+            .where((s) => s.isNotEmpty)
+            .toSet(); // Tekrar eden kelimeleri engellemek için Set kullanıyoruz
 
-        createBatch.set(newPollRef, {
-          'question': pollData['question'],
-          'question_lowercase': (pollData['question'] as String).toLowerCase(),
-          'options': pollData['options'],
-          'videoUrl':
-              pollData['videoUrl'], // Artık çalışan linkler kullanılacak
-          'news_summary': pollData['news_summary'],
-          'order': i + 1,
-          'isActive': true,
-          'commentsCount': initialCommentsCount,
-          'counts': initialCounts,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+        final searchIndex = <String>{};
+        for (final word in words) {
+          // Her kelimenin 3 harften başlayan tüm varyasyonlarını ekle
+          for (int j = 3; j <= word.length; j++) {
+            searchIndex.add(word.substring(0, j));
+          }
+          // Kelimenin kendisini de ekleyelim (3 harften kısaysa diye)
+          searchIndex.add(word);
+        }
+
+        // DEĞİŞİKLİK: set(..., SetOptions(merge: true)) kullanıyoruz.
+        // Bu sayede belge yoksa oluşturulur, varsa sadece belirtilen alanlar güncellenir.
+        // videoUrl bu map içinde olmadığı için ASLA güncellenmeyecek.
+        writeBatch.set(
+            pollRef,
+            {
+              'question': pollData['question'],
+              'question_lowercase':
+                  (pollData['question'] as String).toLowerCase(),
+              'question_keywords':
+                  words.toList(), // Orijinal kelimeleri de tutalım
+              'question_search_index': searchIndex.toList(), // YENİ ARAMA ALANI
+              'options': pollData['options'],
+              'news_summary': pollData['news_summary'],
+              'order': i + 1,
+              'isActive': true,
+            },
+            SetOptions(merge: true));
       }
 
-      await createBatch.commit();
+      await writeBatch.commit();
 
       setState(() {
         _log =
-            '✅ BAŞARILI: 10 adet gündem anketi başarıyla oluşturuldu/güncellendi!';
+            '✅ BAŞARILI: 10 adet gündem anketi başarıyla güncellendi! Video URL\'leri korundu.';
       });
     } catch (e) {
-      setState(() => _log = '❌ HATA: Oluşturma sırasında bir sorun oluştu: $e');
+      setState(
+          () => _log = '❌ HATA: Güncelleme sırasında bir sorun oluştu: $e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -122,6 +140,7 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         batch.update(pollDoc.reference, {
           'commentsCount': 0,
           'counts': zeroCounts,
+          'totalVotes': 0,
         });
       }
 
@@ -138,9 +157,6 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         batch.update(userDoc.reference, {
           'commentsCount': 0,
           'votesCount': 0,
-          // Not: Takipçi sayılarını sıfırlamak isterseniz aşağıdaki satırları ekleyebilirsiniz.
-          // 'followersCount': 0,
-          // 'followingCount': 0,
         });
       }
 
@@ -200,7 +216,7 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
                 style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12)),
                 icon: const Icon(Icons.add_to_photos_outlined),
-                label: const Text('Gündem Anketlerini Oluştur (10 Adet)',
+                label: const Text('Anket Verilerini Güncelle',
                     style: TextStyle(fontSize: 16)),
               ),
               const SizedBox(height: 24),
@@ -224,50 +240,40 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
 
   /// Anket verilerini ve "Ne Olmuştu?" hikayelerini içeren liste
   List<Map<String, dynamic>> _getPollsList() {
-    // TÜM VİDEO LİNKLERİ ÇALIŞAN BİR TEST VİDEOSU İLE DEĞİŞTİRİLDİ
-    const workingVideoUrl =
-        'https://storage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
-
     return [
       {
         'question': 'Sence Fatih Altaylı\'nın tutukluluk kararı doğru muydu?',
         'options': ['Evet, doğruydu', 'Hayır, yanlıştı'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Kalemlerin sustuğu bir gece... Tanınmış gazeteci Fatih Altaylı, bir köşe yazısındaki ifadeleri nedeniyle "suçu ve suçluyu övme" iddiasıyla başlatılan soruşturma sonrası kendini parmaklıklar ardında buldu. Kamuoyu, bu kararın basın özgürlüğüne vurulmuş bir darbe olup olmadığını tartışırken, adliye koridorları "ifade hürriyeti" kavramının sınırlarını yeniden çiziyordu.'
       },
       {
         'question': 'Ayşe Ateş davasının gidişatından memnun musun?',
         'options': ['Evet, memnunum', 'Hayır, değilim'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Adalet arayışı bir sembole dönüştü. Eşi Sinan Ateş\'in öldürülmesinin ardından Ayşe Ateş, hukuk mücadelesinin en ön saflarında yer aldı. Davanın siyasi yankıları devam ederken, Ayşe Ateş\'in kararlı duruşu ve "perde arkası aydınlatılsın" haykırışı, Türkiye\'nin adalet sistemine olan güvenini sorgulatan bir süreci başlattı.'
       },
       {
         'question': 'Türkiye\'de sence de bir ekonomik kriz var mı?',
         'options': ['Evet, var', 'Hayır, yok'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Market sepetleri hafiflerken, cüzdanlardaki yangın büyüyor. Artan enflasyon ve düşen alım gücü, milyonlarca ailenin bütçesini alt üst etti. Kimi uzmanlar bunun geçici bir dalgalanma olduğunu söylerken, sokaktaki vatandaş için durum çok daha netti: "Geçinemiyoruz!" Tartışmalar, rakamların ötesinde, insan hikayeleri üzerinden devam ediyor.'
       },
       {
         'question': 'Yeni vergi reformu sence adil mi?',
         'options': ['Adil', 'Değil'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Hükümet, ekonomiyi düzeltme amacıyla yeni bir vergi paketi hazırladı. "Az kazanandan az, çok kazanandan çok" sloganıyla yola çıkılsa da, paketin detayları ortaya çıktıkça özellikle orta direğin ve küçük esnafın yükünün artacağı endişeleri yükseldi. Bu reform, gerçekten de vergi adaletini sağlayacak mı, yoksa makas daha da mı açılacak?'
       },
       {
         'question': 'Sokak hayvanları için en doğru çözüm sence hangisi?',
         'options': ['Uyutulmalı', 'Kısırlaştırılmalı'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Masum bakışlar ve artan endişeler... Şehirlerdeki sahipsiz hayvan popülasyonu, toplumu ikiye bölen bir soruna dönüştü. Bir yanda güvenlik endişesiyle radikal çözümler isteyenler, diğer yanda "yaşam hakkı kutsaldır" diyerek kısırlaştırma ve rehabilitasyonu savunanlar. Bu hassas denge, vicdanları ve yasaları karşı karşıya getiriyor.'
       },
       {
         'question': 'Sinan Ateş suikastının aydınlatılacağına inanıyor musun?',
         'options': ['İnanıyorum', 'İnanmıyorum'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Ankara\'nın kalbinde sıkılan bir kurşun, siyasetin dehlizlerinde yankılanmaya devam ediyor. Eski Ülkü Ocakları Başkanı Sinan Ateş\'in katledilmesi, basit bir cinayetin çok ötesinde, karmaşık ilişkiler ağını ve derin bağlantıları ortaya serdi. Kamuoyu, adaletin bu karanlık tünelin sonundaki ışığı yakıp yakamayacağını merakla bekliyor.'
       },
@@ -275,7 +281,6 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         'question':
             'Yapay zeka gelecekte insanlık için bir tehdit oluşturur mu?',
         'options': ['Evet, oluşturur', 'Hayır, oluşturmaz'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Düşünen makineler aramızda. Sanat üreten, metin yazan, hatta insanlarla sohbet eden yapay zeka, bir zamanlar bilim kurgu olan bir geleceği bugüne taşıdı. Bu teknolojik devrim, insanlığın en büyük yardımcısı mı olacak, yoksa kontrolümüzden çıkıp varoluşsal bir tehdide mi dönüşecek? Geri sayım çoktan başladı.'
       },
@@ -283,14 +288,12 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         'question':
             'Sence Türkiye 2030 yılına kadar Avrupa Birliği\'ne girebilir mi?',
         'options': ['Evet, girebilir', 'Hayır, giremez'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Yarım asrı deviren bir rüya... Türkiye\'nin Avrupa Birliği\'ne tam üyelik hedefi, siyasi gelgitler ve değişen küresel dinamikler arasında bir ileri bir geri gidiyor. Bir nesil bu hedefle büyüdü, ancak yeni nesiller için bu ihtimal giderek daha uzak görünüyor. Peki, bu hedef hala gerçekçi mi, yoksa geçmişte kalmış bir ideal mi?'
       },
       {
         'question': 'Asgari ücrete yılda tek zam yapılması yeterli mi?',
         'options': ['Evet, yeterli', 'Hayır, yetersiz'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Enflasyon canavarı maaşları eritirken, gözler asgari ücret pazarlıklarına çevrildi. Hükümetin "yılda tek zam" politikası, alım gücünü korumaya yetecek mi? Milyonlarca çalışan, ay sonunu getirme mücadelesi verirken, bu kararın sofralarına nasıl yansıyacağını endişeyle bekliyor.'
       },
@@ -298,7 +301,6 @@ class _DevAdminSeedScreenState extends State<DevAdminSeedScreen> {
         'question':
             'Sence sosyal medya fenomenlerine yönelik denetimler artırılmalı mı?',
         'options': ['Evet, artırılmalı', 'Hayır, gerek yok'],
-        'videoUrl': workingVideoUrl,
         'news_summary':
             'Lüks hayatlar, şaibeli kazançlar... Bir zamanlar sadece eğlence kaynağı olan sosyal medya, vergi kaçırma ve kara para aklama iddialarıyla sarsıldı. Gözaltına alınan fenomenler, bu dijital dünyanın aslında ne kadar denetimsiz olduğunu gözler önüne serdi. Şimdi soruluyor: Bu ışıltılı hayatların bedelini kim ödüyor?'
       },

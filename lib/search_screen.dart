@@ -25,7 +25,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _performSearch(String query) async {
     final searchQuery = query.trim().toLowerCase();
-    if (searchQuery.length < 2) {
+    // Arama için minimum karakter sayısını 3'e çıkarıyoruz
+    if (searchQuery.length < 3) {
       setState(() {
         _hasSearched = false;
         _userResults = [];
@@ -48,11 +49,12 @@ class _SearchScreenState extends State<SearchScreen> {
         .limit(10)
         .get();
 
-    // Anketleri ara (question_lowercase alanında)
+    // Anketleri ara (question_search_index alanında)
     final pollQuery = FirebaseFirestore.instance
         .collection('polls')
-        .where('question_lowercase', isGreaterThanOrEqualTo: searchQuery)
-        .where('question_lowercase', isLessThanOrEqualTo: '$searchQuery\uf8ff')
+        .where('question_search_index',
+            arrayContains: searchQuery) // DEĞİŞTİRİLDİ
+        .orderBy('totalVotes', descending: true)
         .limit(10)
         .get();
 
@@ -101,7 +103,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 : !_hasSearched
                     ? const _InfoState(
                         icon: Icons.search,
-                        message: 'Aramak için en az 2 karakter girin.',
+                        message: 'Aramak için en az 3 karakter girin.',
                       )
                     : noResults
                         ? const _InfoState(
@@ -218,10 +220,7 @@ class _PollResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final question = pollData['question'] as String? ?? 'Anket sorusu yok';
-    // --- DÜZELTME: 'count' değişken adı 'value' olarak değiştirildi. ---
-    final totalVotes = (pollData['counts'] as Map? ?? {})
-        .values
-        .fold<int>(0, (prev, value) => prev + (value as int));
+    final totalVotes = pollData['totalVotes'] ?? 0;
 
     return Card(
       child: ListTile(
