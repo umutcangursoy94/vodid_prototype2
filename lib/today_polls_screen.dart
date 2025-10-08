@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -52,7 +53,6 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
       ),
     );
   }
-
 
   @override
   void initState() {
@@ -283,10 +283,7 @@ class _PollFullPageState extends State<_PollFullPage> {
       return;
     }
 
-    // ===== BAŞLANGIÇ: HATA DÜZELTMESİ =====
-    // 'networkUrl' yerine projenizin kullandığı eski versiyona uygun olan 'network' metodunu kullanıyoruz.
     final newController = VideoPlayerController.network(videoUrl);
-    // ===== BİTİŞ: HATA DÜZELTMESİ =====
     
     setState(() {
       _controller = newController;
@@ -331,6 +328,7 @@ class _PollFullPageState extends State<_PollFullPage> {
             final commentsCount = (realTimeData['commentsCount'] ?? 0) as int;
             final newsSummary = (realTimeData['news_summary'] ?? 'Bu konu hakkında bir özet bulunamadı.') as String;
             final pollQuestion = (realTimeData['question'] ?? 'Anket Sorusu') as String;
+            final savedByCount = (realTimeData['savedByCount'] ?? 0) as int;
             
             final videoIsInitialized = _controller?.value.isInitialized ?? false;
 
@@ -373,6 +371,7 @@ class _PollFullPageState extends State<_PollFullPage> {
                             pollId: pollId,
                             pollQuestion: pollQuestion,
                             newsSummary: newsSummary,
+                            savedByCount: savedByCount,
                           ),
                         ),
                       ),
@@ -611,12 +610,14 @@ class _RightActionBar extends StatefulWidget {
   final String pollId;
   final String pollQuestion;
   final String newsSummary;
+  final int savedByCount;
 
   const _RightActionBar({
     required this.commentsCount,
     required this.pollId,
     required this.pollQuestion,
     required this.newsSummary,
+    required this.savedByCount,
   });
 
   @override
@@ -625,28 +626,58 @@ class _RightActionBar extends StatefulWidget {
 
 class _RightActionBarState extends State<_RightActionBar> {
   bool _isSaving = false;
-  late final Stream<DocumentSnapshot> _savedStatusStream;
   late final FirebaseFunctions _functions;
+
+  bool _isSavedOptimistic = false;
+  late int _savedByCountOptimistic;
+  Stream<DocumentSnapshot>? _savedStatusStream;
 
   @override
   void initState() {
     super.initState();
-    _functions = FirebaseFunctions.instance;
+    _functions = FirebaseFunctions.instanceFor(region: 'europe-west1');
+    _savedByCountOptimistic = widget.savedByCount;
+    _checkIfSaved();
+  }
 
+  void _checkIfSaved() {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      _savedStatusStream = FirebaseFirestore.instance
+      final stream = FirebaseFirestore.instance
           .collection('users')
           .doc(user.uid)
           .collection('savedPolls')
           .doc(widget.pollId)
           .snapshots();
-    } else {
-      _savedStatusStream = const Stream.empty();
+      
+      setState(() {
+        _savedStatusStream = stream;
+      });
+      
+      // Sadece ilk durumu almak için .first kullanıyoruz, stream'i build'de dinleyeceğiz
+      stream.first.then((doc) {
+        if (mounted) {
+          setState(() {
+            _isSavedOptimistic = doc.exists;
+          });
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _RightActionBar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.savedByCount != oldWidget.savedByCount) {
+      setState(() {
+        _savedByCountOptimistic = widget.savedByCount;
+      });
     }
   }
 
   Future<void> _toggleSave() async {
+    if (_isSaving) return;
+
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -654,19 +685,46 @@ class _RightActionBarState extends State<_RightActionBar> {
       );
       return;
     }
-    setState(() => _isSaving = true);
-    try {
-      final callable = _functions.httpsCallable('toggleSavePoll');
-      await callable.call({'pollId': widget.pollId});
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('İşlem başarısız oldu: ${e.toString()}')),
-        );
+    
+    setState(() {
+      _isSaving = true;
+      HapticFeedback.lightImpact();
+
+      final previousSavedState = _isSavedOptimistic;
+      final previousSavedCount = _savedByCountOptimistic;
+
+      _isSavedOptimistic = !_isSavedOptimistic;
+      if (_isSavedOptimistic) {
+        _savedByCountOptimistic++;
+      } else {
+        _savedByCountOptimistic--;
       }
-    } finally {
-      if (mounted) setState(() => _isSaving = false);
-    }
+      
+      // Arka planda sunucuyu güncelle
+      _updateSaveStatusOnBackend().catchError((e) {
+        // Hata olursa, arayüzü eski haline döndür
+        setState(() {
+          _isSavedOptimistic = previousSavedState;
+          _savedByCountOptimistic = previousSavedCount;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('İşlem başarısız oldu: ${e.toString()}')),
+          );
+        }
+      }).whenComplete(() {
+        if (mounted) {
+          setState(() {
+            _isSaving = false;
+          });
+        }
+      });
+    });
+  }
+
+  Future<void> _updateSaveStatusOnBackend() async {
+    final callable = _functions.httpsCallable('toggleSavePoll');
+    await callable.call({'pollId': widget.pollId});
   }
 
   Future<void> _sharePoll() async {
@@ -791,10 +849,23 @@ class _RightActionBarState extends State<_RightActionBar> {
         StreamBuilder<DocumentSnapshot>(
           stream: _savedStatusStream,
           builder: (context, snapshot) {
-            final isSaved = snapshot.hasData && snapshot.data!.exists;
+            // Stream'den gelen en güncel veri ile optimistic state'i senkronize et
+            if (snapshot.connectionState == ConnectionState.active && snapshot.hasData) {
+               final isActuallySaved = snapshot.data!.exists;
+               // Sadece state'ler farklıysa güncelleme yap, sonsuz döngüyü önle
+               if (_isSavedOptimistic != isActuallySaved) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted) {
+                      setState(() {
+                        _isSavedOptimistic = isActuallySaved;
+                      });
+                    }
+                  });
+               }
+            }
             return _ActionButton(
-              icon: isSaved ? Icons.bookmark : Icons.bookmark_border_outlined,
-              label: 'Kaydet',
+              icon: _isSavedOptimistic ? Icons.bookmark : Icons.bookmark_border_outlined,
+              label: (_savedByCountOptimistic > 0) ? _savedByCountOptimistic.toString() : 'Kaydet',
               onTap: _toggleSave,
               isLoading: _isSaving,
             );
