@@ -1,6 +1,6 @@
+import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 import 'package:visibility_detector/visibility_detector.dart';
@@ -52,6 +52,7 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
       ),
     );
   }
+
 
   @override
   void initState() {
@@ -114,7 +115,6 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
     final userVoteRef =
         _db.collection('users').doc(uid).collection('votes').doc(pollId);
     final userDocRef = _db.collection('users').doc(uid);
-
     final userActivityRef = userDocRef.collection('activities').doc();
 
     try {
@@ -133,7 +133,6 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
           'pollId': pollId,
           'question': question,
         });
-
         tx.set(userActivityRef, {
           'type': 'vote',
           'timestamp': FieldValue.serverTimestamp(),
@@ -141,7 +140,6 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
           'choice': choice,
           'pollQuestion': question,
         });
-
         tx.update(userDocRef, {'votesCount': FieldValue.increment(1)});
         tx.update(pollRef, {
           'counts.$choice': FieldValue.increment(1),
@@ -253,6 +251,7 @@ class _PollFullPage extends StatefulWidget {
 
 class _PollFullPageState extends State<_PollFullPage> {
   VideoPlayerController? _controller;
+  bool _isInitializing = false;
 
   @override
   void dispose() {
@@ -262,50 +261,53 @@ class _PollFullPageState extends State<_PollFullPage> {
 
   void _onVisibilityChanged(VisibilityInfo info) {
     if (!mounted) return;
-    if (info.visibleFraction > 0.8) {
-      _initializeAndPlayVideo();
-    } else if (info.visibleFraction < 0.2 && _controller != null) {
-      _disposeVideo();
+    final isVisible = info.visibleFraction > 0.85;
+
+    if (isVisible) {
+      if (_controller == null && !_isInitializing) {
+        _initializeAndPlay();
+      } else {
+        _controller?.play();
+      }
+    } else {
+      _controller?.pause();
     }
   }
 
-  void _initializeAndPlayVideo() {
-    if (_controller != null) {
-      _controller!.play();
+  void _initializeAndPlay() {
+    _isInitializing = true;
+    final data = widget.pollDoc.data();
+    final videoUrl = data?['videoUrl'] as String?;
+    if (videoUrl == null || videoUrl.isEmpty) {
+      _isInitializing = false;
       return;
     }
 
-    final data = widget.pollDoc.data();
-    final videoUrl = data?['videoUrl'] as String?;
-    if (videoUrl == null || videoUrl.isEmpty) return;
+    // ===== BAŞLANGIÇ: HATA DÜZELTMESİ =====
+    // 'networkUrl' yerine projenizin kullandığı eski versiyona uygun olan 'network' metodunu kullanıyoruz.
+    final newController = VideoPlayerController.network(videoUrl);
+    // ===== BİTİŞ: HATA DÜZELTMESİ =====
     
-    // DÜZELTME: VideoPlayerController.network() String parametresi bekler.
-    _controller = VideoPlayerController.network(
-      videoUrl, 
-      httpHeaders: {
-        'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-      videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-    )..initialize().then((_) {
-        if (!mounted || _controller == null) return;
-        _controller!.setLooping(true);
-        _controller!.setVolume(0);
-        _controller!.play();
+    setState(() {
+      _controller = newController;
+    });
+
+    newController.initialize().then((_) {
+      if (mounted && _controller == newController) {
+        newController.setLooping(true);
+        newController.setVolume(0);
+        newController.play();
         setState(() {});
-      });
-
-    setState(() {});
-  }
-
-  Future<void> _disposeVideo() async {
-    final oldController = _controller;
-    if (mounted) {
+      } else {
+        newController.dispose();
+      }
+      _isInitializing = false;
+    }).catchError((e) {
+      _isInitializing = false;
       setState(() {
         _controller = null;
       });
-    }
-    await oldController?.dispose();
+    });
   }
 
   @override
@@ -314,7 +316,7 @@ class _PollFullPageState extends State<_PollFullPage> {
     final pollId = widget.pollDoc.id;
 
     return VisibilityDetector(
-      key: ValueKey(pollId),
+      key: ValueKey("vis_detector_$pollId"),
       onVisibilityChanged: _onVisibilityChanged,
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -322,32 +324,28 @@ class _PollFullPageState extends State<_PollFullPage> {
           stream: widget.pollDoc.reference.snapshots(),
           builder: (context, pollSnapshot) {
             if (!pollSnapshot.hasData) {
-              return const Center(
-                  child: CircularProgressIndicator(color: Colors.white));
+              return const Center(child: CircularProgressIndicator(color: Colors.white));
             }
             final realTimeData = pollSnapshot.data!.data()!;
             final options = List<String>.from(realTimeData['options'] ?? []);
             final commentsCount = (realTimeData['commentsCount'] ?? 0) as int;
-            final newsSummary = (realTimeData['news_summary'] ??
-                'Bu konu hakkında bir özet bulunamadı.') as String;
-            final pollQuestion =
-                (realTimeData['question'] ?? 'Anket Sorusu') as String;
+            final newsSummary = (realTimeData['news_summary'] ?? 'Bu konu hakkında bir özet bulunamadı.') as String;
+            final pollQuestion = (realTimeData['question'] ?? 'Anket Sorusu') as String;
+            
+            final videoIsInitialized = _controller?.value.isInitialized ?? false;
 
             return Stack(
               fit: StackFit.expand,
               children: [
-                if (_controller != null && _controller!.value.isInitialized)
-                  FittedBox(
-                    fit: BoxFit.cover,
-                    child: SizedBox(
-                      width: _controller!.value.size.width,
-                      height: _controller!.value.size.height,
+                if (videoIsInitialized)
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: _controller!.value.aspectRatio,
                       child: VideoPlayer(_controller!),
                     ),
                   )
                 else
-                  const Center(
-                      child: CircularProgressIndicator(color: Colors.white24)),
+                  const Center(child: CircularProgressIndicator(color: Colors.white24)),
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
@@ -386,24 +384,40 @@ class _PollFullPageState extends State<_PollFullPage> {
                                 .doc(uid)
                                 .snapshots(),
                         builder: (context, voteSnapshot) {
-                          if (voteSnapshot.connectionState ==
-                              ConnectionState.waiting) {
-                            return _BottomLeftControls.waiting(
-                                options: options);
+                          if (!voteSnapshot.hasData) {
+                            return Align(
+                              alignment: Alignment.bottomLeft,
+                              child: Padding(
+                                padding: const EdgeInsets.all(24.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (options.isNotEmpty)
+                                      Opacity(
+                                        opacity: 0,
+                                        child: _VoteButton(label: options[0], onPressed: null),
+                                      ),
+                                    const SizedBox(height: 12),
+                                    if (options.length > 1)
+                                       Opacity(
+                                        opacity: 0,
+                                        child: _VoteButton(label: options[1], onPressed: null),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
                           }
-
-                          final hasVoted =
-                              voteSnapshot.hasData && voteSnapshot.data!.exists;
-                          final counts = Map<String, dynamic>.from(
-                              realTimeData['counts'] ?? {});
-                          final totalVotes = counts.values
-                              .fold<int>(0, (p, e) => p + (e as int));
-
+                          
+                          final hasVoted = voteSnapshot.data!.exists;
+                          final counts = Map<String, dynamic>.from(realTimeData['counts'] ?? {});
+                          final totalVotes = counts.values.fold<int>(0, (p, e) => p + (e as int));
+                          
                           return _BottomLeftControls(
                             options: options,
                             hasVoted: hasVoted,
-                            userChoice:
-                                (voteSnapshot.data?.data() as Map?)?['choice'],
+                            userChoice: (voteSnapshot.data?.data() as Map?)?['choice'],
                             counts: counts,
                             totalVotes: totalVotes,
                             onVote: widget.onVote,
@@ -439,16 +453,6 @@ class _BottomLeftControls extends StatelessWidget {
     required this.onVote,
   });
 
-  const _BottomLeftControls.waiting({
-    required this.options,
-  })  : hasVoted = false,
-        userChoice = null,
-        counts = const {},
-        totalVotes = 0,
-        onVote = _doNothing;
-
-  static void _doNothing(String choice) {}
-
   @override
   Widget build(BuildContext context) {
     if (options.isEmpty) return const SizedBox.shrink();
@@ -476,10 +480,11 @@ class _BottomLeftControls extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _VoteButton(
-                    label: options[0],
-                    onPressed: () => onVote(options[0]),
-                  ),
+                  if (options.isNotEmpty)
+                    _VoteButton(
+                      label: options[0],
+                      onPressed: () => onVote(options[0]),
+                    ),
                   const SizedBox(height: 12),
                   if (options.length > 1)
                     _VoteButton(
