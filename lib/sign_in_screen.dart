@@ -22,7 +22,6 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _loading = false;
   String? _error;
 
-  /// Kullanıcı adının benzersiz olup olmadığını kontrol eder.
   Future<bool> _isUsernameTaken(String username) async {
     final result = await _db
         .collection('users')
@@ -32,7 +31,6 @@ class _SignInScreenState extends State<SignInScreen> {
     return result.docs.isNotEmpty;
   }
 
-  /// Kullanıcı verisini Firestore'da oluşturur.
   Future<void> _createUserData(User user,
       {String? displayName, String? username}) async {
     final userRef = _db.collection('users').doc(user.uid);
@@ -65,7 +63,6 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  /// E-posta ve şifre ile giriş/kayıt fonksiyonu
   Future<void> _signInWithEmail() async {
     final email = _emailCtrl.text.trim();
     final pass = _passwordCtrl.text;
@@ -125,7 +122,6 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  /// Misafir olarak giriş
   Future<void> _signInAnon() async {
     setState(() {
       _loading = true;
@@ -140,7 +136,6 @@ class _SignInScreenState extends State<SignInScreen> {
     }
   }
 
-  /// Google ile Giriş Fonksiyonu
   Future<void> _signInWithGoogle() async {
     setState(() {
       _loading = true;
@@ -148,6 +143,7 @@ class _SignInScreenState extends State<SignInScreen> {
     });
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      // Kullanıcı giriş yapmaktan vazgeçerse null döner, bu durumu kontrol et.
       if (googleUser == null) {
         if (mounted) setState(() => _loading = false);
         return;
@@ -163,7 +159,9 @@ class _SignInScreenState extends State<SignInScreen> {
         await _createUserData(userCredential.user!);
       }
     } catch (e) {
-      setState(() => _error = 'Google ile giriş yapılamadı: ${e.toString()}');
+      if (mounted) {
+        setState(() => _error = 'Google ile giriş yapılamadı: ${e.toString()}');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -184,201 +182,210 @@ class _SignInScreenState extends State<SignInScreen> {
     return Scaffold(
       body: SafeArea(
         child: Center(
-          child: SingleChildScrollView(
+          child: ListView( // SingleChildScrollView yerine ListView kullandık
             padding: const EdgeInsets.all(24.0),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Social Poll',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.playfairDisplay(
-                      fontSize: 48,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Fikrini belirt, dünyaya katıl.',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium?.copyWith(fontSize: 18),
-                  ),
-                  const SizedBox(height: 48),
-                  if (_error != null)
-                    Container(
-                      margin: const EdgeInsets.only(bottom: 20),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.red.withAlpha(25),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.red, fontWeight: FontWeight.w500),
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'Social Poll',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.playfairDisplay(
+                        fontSize: 48,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1,
+                        color: theme.colorScheme.primary,
                       ),
                     ),
-                  TextField(
-                    controller: _displayNameCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Görünen İsim (Örn: Umut Can)',
-                      prefixIcon: const Icon(Icons.badge_outlined),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Fikrini belirt, dünyaya katıl.',
+                      textAlign: TextAlign.center,
+                      style:
+                          theme.textTheme.bodyMedium?.copyWith(fontSize: 18),
                     ),
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _usernameCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Kullanıcı Adı (Örn: umutcan)',
-                      prefixIcon: const Icon(Icons.alternate_email),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    keyboardType: TextInputType.text,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _emailCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      prefixIcon: const Icon(Icons.email_outlined),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    keyboardType: TextInputType.emailAddress,
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordCtrl,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      prefixIcon: const Icon(Icons.lock_outline),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius:
-                            const BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.grey.shade300),
-                      ),
-                    ),
-                    obscureText: true,
-                  ),
-                  const SizedBox(height: 32),
-                  if (_loading)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        ElevatedButton(
-                          onPressed: _signInWithEmail,
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            backgroundColor: theme.colorScheme.primary,
-                            foregroundColor: theme.colorScheme.surface,
-                          ),
-                          child: const Text('Giriş Yap / Kayıt Ol',
-                              style: TextStyle(
-                                  fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 48),
+                    if (_error != null)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withAlpha(25),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(height: 12),
-                        OutlinedButton(
-                          onPressed: _signInAnon,
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        child: Text(
+                          _error!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.red, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    TextField(
+                      controller: _displayNameCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Görünen İsim (Örn: Umut Can)',
+                        prefixIcon: const Icon(Icons.badge_outlined),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                      ),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _usernameCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Kullanıcı Adı (Örn: umutcan)',
+                        prefixIcon: const Icon(Icons.alternate_email),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                      ),
+                      keyboardType: TextInputType.text,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _emailCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _passwordCtrl,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius:
+                              const BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.grey.shade300),
+                        ),
+                      ),
+                      obscureText: true,
+                    ),
+                    const SizedBox(height: 32),
+                    if (_loading)
+                      const Center(child: CircularProgressIndicator())
+                    else
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          ElevatedButton(
+                            onPressed: _signInWithEmail,
+                            style: ElevatedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: theme.colorScheme.surface,
                             ),
-                            side: BorderSide(color: Colors.grey.shade400),
+                            child: const Text('Giriş Yap / Kayıt Ol',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold)),
                           ),
-                          child: Text('Misafir Olarak Devam Et',
+                          const SizedBox(height: 12),
+                          OutlinedButton(
+                            onPressed: _signInAnon,
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              side: BorderSide(color: Colors.grey.shade400),
+                            ),
+                            child: Text('Misafir Olarak Devam Et',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    color: theme.colorScheme.primary)),
+                          ),
+                          const SizedBox(height: 24),
+                          const Row(
+                            children: [
+                              Expanded(child: Divider()),
+                              Padding(
+                                padding:
+                                    EdgeInsets.symmetric(horizontal: 12.0),
+                                child: Text('YA DA',
+                                    style: TextStyle(color: Colors.grey)),
+                              ),
+                              Expanded(child: Divider()),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          OutlinedButton.icon(
+                            onPressed: _signInWithGoogle,
+                            icon: const Icon(Icons.g_mobiledata_rounded,
+                                color: Colors.red),
+                            label: Text(
+                              'Google ile Devam Et',
                               style: TextStyle(
                                   fontSize: 16,
-                                  color: theme.colorScheme.primary)),
-                        ),
-                        const SizedBox(height: 24),
-                        const Row(
-                          children: [
-                            Expanded(child: Divider()),
-                            Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12.0),
-                              child: Text('YA DA',
-                                  style: TextStyle(color: Colors.grey)),
+                                  color: theme.colorScheme.primary),
                             ),
-                            Expanded(child: Divider()),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        OutlinedButton.icon(
-                          onPressed: _signInWithGoogle,
-                          icon: const Icon(Icons.g_mobiledata_rounded,
-                              color: Colors.red),
-                          label: Text(
-                            'Google ile Devam Et',
-                            style: TextStyle(
-                                fontSize: 16, color: theme.colorScheme.primary),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 16),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            style: OutlinedButton.styleFrom(
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              side: BorderSide(color: Colors.grey.shade400),
                             ),
-                            side: BorderSide(color: Colors.grey.shade400),
                           ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
+                        ],
+                      ),
+                  ],
+                ),
+              )
+            ],
           ),
         ),
       ),
