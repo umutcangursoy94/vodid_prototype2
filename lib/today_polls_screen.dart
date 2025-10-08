@@ -31,6 +31,28 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>>? _polls;
   bool _isLoading = true;
 
+  void _showCommentsSheet(
+    BuildContext context, {
+    required String pollId,
+    String? highlightedCommentId,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bContext) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        builder: (_, controller) => CommentsSheet(
+          pollId: pollId,
+          highlightedCommentId: highlightedCommentId,
+          scrollController: controller,
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +84,7 @@ class _TodayPollsScreenState extends State<TodayPollsScreen> {
       if (widget.showCommentsForPollId != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
-            CommentsSheet.show(
+            _showCommentsSheet(
               context,
               pollId: widget.showCommentsForPollId!,
               highlightedCommentId: widget.highlightedCommentId,
@@ -256,9 +278,10 @@ class _PollFullPageState extends State<_PollFullPage> {
     final data = widget.pollDoc.data();
     final videoUrl = data?['videoUrl'] as String?;
     if (videoUrl == null || videoUrl.isEmpty) return;
-
-    _controller = VideoPlayerController.networkUrl(
-      Uri.parse(videoUrl),
+    
+    // DÜZELTME: VideoPlayerController.network() String parametresi bekler.
+    _controller = VideoPlayerController.network(
+      videoUrl, 
       httpHeaders: {
         'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
@@ -603,7 +626,6 @@ class _RightActionBarState extends State<_RightActionBar> {
   @override
   void initState() {
     super.initState();
-    // DEĞİŞİKLİK: Bölge tanımı kaldırıldı, varsayılan (us-central1) kullanılacak.
     _functions = FirebaseFunctions.instance;
 
     final user = FirebaseAuth.instance.currentUser;
@@ -727,6 +749,23 @@ class _RightActionBarState extends State<_RightActionBar> {
     );
   }
 
+  void _showCommentsSheet(BuildContext context, {required String pollId}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (bContext) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        builder: (_, controller) => CommentsSheet(
+          pollId: pollId,
+          scrollController: controller,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -735,7 +774,7 @@ class _RightActionBarState extends State<_RightActionBar> {
         _ActionButton(
           icon: Icons.chat_bubble_outline_rounded,
           label: widget.commentsCount.toString(),
-          onTap: () => CommentsSheet.show(context, pollId: widget.pollId),
+          onTap: () => _showCommentsSheet(context, pollId: widget.pollId),
         ),
         const SizedBox(height: 24),
         _ActionButton(
