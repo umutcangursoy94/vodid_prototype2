@@ -1,6 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/my_votes_screen.dart';
+import 'package:vodid_prototype2/profile_wrapper_screen.dart';
 import 'package:vodid_prototype2/search_screen.dart';
 import 'package:vodid_prototype2/summary_screen.dart';
 import 'package:vodid_prototype2/today_polls_screen.dart';
@@ -13,94 +12,65 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  int _selectedIndex = 0;
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
 
-  static final List<Widget> _widgetOptions = <Widget>[
-    const TodayPollsScreen(),
-    const SearchScreen(),
-    // HATA DÜZELTMESİ: SummaryScreen'in artık anket listesini parametre
-    // olarak alması gerekiyor. Bu yüzden bir StreamBuilder ile veriyi
-    // Firestore'dan çekip SummaryScreen'e iletiyoruz.
-    StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection('polls')
-          .orderBy('order')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final docs = snapshot.data?.docs ?? [];
-        // 'polls' parametresi burada veriliyor.
-        return SummaryScreen(polls: docs);
-      },
-    ),
-    const MyVotesScreen(),
-  ];
-
-  void _onItemTapped(int index) {
+  void _onPageChanged(int index) {
     setState(() {
-      _selectedIndex = index;
+      _currentIndex = index;
     });
+  }
+
+  void _onNavItemTapped(int index) {
+    _pageController.jumpToPage(index);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: _widgetOptions.elementAt(_selectedIndex),
+      body: PageView(
+        controller: _pageController,
+        onPageChanged: _onPageChanged,
+        physics: const NeverScrollableScrollPhysics(), 
+        children: const [
+          TodayPollsScreen(),
+          SearchScreen(),
+          SummaryScreen(),
+          ProfileWrapperScreen(),
+        ],
       ),
-      bottomNavigationBar: _CustomBottomNavBar(
-        selectedIndex: _selectedIndex,
-        onItemTapped: _onItemTapped,
-      ),
-    );
-  }
-}
-
-class _CustomBottomNavBar extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onItemTapped;
-
-  const _CustomBottomNavBar({
-    required this.selectedIndex,
-    required this.onItemTapped,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade300, width: 1.5),
-        ),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _buildNavItem(Icons.poll_outlined, 0),
-              _buildNavItem(Icons.search, 1),
-              _buildNavItem(Icons.bar_chart_outlined, 2),
-              _buildNavItem(Icons.person_outline, 3),
-            ],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: _onNavItemTapped,
+        selectedItemColor: Colors.black,
+        unselectedItemColor: Colors.grey,
+        showSelectedLabels: false,
+        showUnselectedLabels: false,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Anketler',
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavItem(IconData icon, int index) {
-    final isSelected = selectedIndex == index;
-    return IconButton(
-      onPressed: () => onItemTapped(index),
-      icon: Icon(
-        icon,
-        color: isSelected ? Colors.black : Colors.grey[500],
-        size: 30,
+          BottomNavigationBarItem(
+            icon: Icon(Icons.search),
+            label: 'Ara',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart),
+            label: 'Özetler',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Profil',
+          ),
+        ],
       ),
     );
   }

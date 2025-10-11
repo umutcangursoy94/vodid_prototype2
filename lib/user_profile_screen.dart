@@ -1,11 +1,12 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:vodid_prototype2/my_votes_screen.dart'; // YENİ: ActivityFeedWidget'ı import ediyoruz
+import 'package:vodid_prototype2/generic_list_screen.dart';
+import 'package:vodid_prototype2/my_votes_screen.dart';
+import 'package:vodid_prototype2/sign_in_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final String userId;
-
   const UserProfileScreen({super.key, required this.userId});
 
   @override
@@ -13,11 +14,286 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final _db = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUserId = _auth.currentUser?.uid;
+    final isMyProfile = currentUserId == widget.userId;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isMyProfile ? 'Profilim' : 'Profil'),
+        // Başka birinin profilindeysek geri tuşu görünsün, kendi profilimizdeysek görünmesin.
+        automaticallyImplyLeading: !isMyProfile,
+        actions: [
+          if (isMyProfile)
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Çıkış Yap',
+              onPressed: () async {
+                await _auth.signOut();
+                if (!mounted) return;
+                // Uygulamadan tamamen çıkış yapıp giriş ekranına yönlendiriyoruz.
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const SignInScreen()),
+                  (route) => false,
+                );
+              },
+            ),
+        ],
+      ),
+      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('Kullanıcı bulunamadı.'));
+          }
+          final userData = snapshot.data!.data()!;
+          return _ProfileBody(
+            userData: userData,
+            userId: widget.userId,
+            isMyProfile: isMyProfile,
+            currentUserId: currentUserId,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProfileBody extends StatelessWidget {
+  const _ProfileBody({
+    required this.userData,
+    required this.userId,
+    required this.isMyProfile,
+    this.currentUserId,
+  });
+
+  final Map<String, dynamic> userData;
+  final String userId;
+  final bool isMyProfile;
+  final String? currentUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _ProfileHeader(
+            userData: userData,
+            userId: userId,
+            isMyProfile: isMyProfile,
+            currentUserId: currentUserId,
+          ),
+          const Divider(),
+          const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Center(
+              child: Text(
+                'Yorumlar ve aktiviteler burada görünecek.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeader extends StatelessWidget {
+  const _ProfileHeader({
+    required this.userData,
+    required this.userId,
+    required this.isMyProfile,
+    this.currentUserId,
+  });
+
+  final Map<String, dynamic> userData;
+  final String userId;
+  final bool isMyProfile;
+  final String? currentUserId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 40,
+                backgroundImage: userData['photoURL'] != null
+                    ? NetworkImage(userData['photoURL'])
+                    : null,
+                child: userData['photoURL'] == null
+                    ? const Icon(Icons.person, size: 40)
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      userData['username'] ?? 'İsimsiz',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                    if (!isMyProfile && currentUserId != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: _FollowButton(
+                          currentUserId: currentUserId!,
+                          profileUserId: userId,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          _StatsRow(
+            userData: userData,
+            isMyProfile: isMyProfile,
+            userId: userId,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({
+    required this.userData,
+    required this.isMyProfile,
+    required this.userId,
+  });
+
+  final Map<String, dynamic> userData;
+  final bool isMyProfile;
+  final String userId;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _StatItem(
+          label: 'Oylar',
+          value: (userData['votesCount'] ?? 0).toString(),
+          onTap: isMyProfile
+              ? () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MyVotesScreen()),
+                  )
+              : null,
+        ),
+        _StatItem(
+          label: 'Takipçi',
+          value: (userData['followersCount'] ?? 0).toString(),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => GenericListScreen(
+              title: 'Takipçiler',
+              // ===== HATA DÜZELTMESİ BAŞLANGIÇ =====
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(userId)
+                  .collection('followers')
+                  .snapshots(),
+              itemBuilder: (context, doc) {
+                return _UserTile(userId: doc.id);
+              },
+              // ===== HATA DÜZELTMESİ BİTİŞ =====
+            ),
+          )),
+        ),
+        _StatItem(
+          label: 'Takip',
+          value: (userData['followingCount'] ?? 0).toString(),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => GenericListScreen(
+              title: 'Takip Edilenler',
+              // ===== HATA DÜZELTMESİ BAŞLANGIÇ =====
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(userId)
+                  .collection('following')
+                  .snapshots(),
+              itemBuilder: (context, doc) {
+                return _UserTile(userId: doc.id);
+              },
+              // ===== HATA DÜZELTMESİ BİTİŞ =====
+            ),
+          )),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatItem extends StatelessWidget {
+  const _StatItem({
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
+
+  final String label;
+  final String value;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.grey),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FollowButton extends StatefulWidget {
+  final String currentUserId;
+  final String profileUserId;
+
+  const _FollowButton({
+    required this.currentUserId,
+    required this.profileUserId,
+  });
+
+  @override
+  State<_FollowButton> createState() => _FollowButtonState();
+}
+
+class _FollowButtonState extends State<_FollowButton> {
   bool _isFollowing = false;
-  bool _isLoadingFollowStatus = true;
-  bool _isProcessingFollow = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -26,253 +302,121 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   Future<void> _checkIfFollowing() async {
-    if (_auth.currentUser == null) {
-      setState(() => _isLoadingFollowStatus = false);
-      return;
-    }
-    final currentUserUid = _auth.currentUser!.uid;
-    final followingDoc = await _db
+    final doc = await FirebaseFirestore.instance
         .collection('users')
-        .doc(currentUserUid)
+        .doc(widget.currentUserId)
         .collection('following')
-        .doc(widget.userId)
+        .doc(widget.profileUserId)
         .get();
-
     if (mounted) {
       setState(() {
-        _isFollowing = followingDoc.exists;
-        _isLoadingFollowStatus = false;
+        _isFollowing = doc.exists;
+        _isLoading = false;
       });
     }
   }
 
   Future<void> _toggleFollow() async {
-    if (_auth.currentUser == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bu işlem için giriş yapmalısınız.')),
-        );
-      }
-      return;
+    setState(() => _isLoading = true);
+    final followingRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.currentUserId)
+        .collection('following')
+        .doc(widget.profileUserId);
+    final followerRef = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.profileUserId)
+        .collection('followers')
+        .doc(widget.currentUserId);
+    
+    final currentUserRef = FirebaseFirestore.instance.collection('users').doc(widget.currentUserId);
+    final profileUserRef = FirebaseFirestore.instance.collection('users').doc(widget.profileUserId);
+
+    final batch = FirebaseFirestore.instance.batch();
+
+    if (_isFollowing) {
+      batch.delete(followingRef);
+      batch.delete(followerRef);
+      batch.update(currentUserRef, {'followingCount': FieldValue.increment(-1)});
+      batch.update(profileUserRef, {'followersCount': FieldValue.increment(-1)});
+    } else {
+      batch.set(followingRef, {'timestamp': FieldValue.serverTimestamp()});
+      batch.set(followerRef, {'timestamp': FieldValue.serverTimestamp()});
+      batch.update(currentUserRef, {'followingCount': FieldValue.increment(1)});
+      batch.update(profileUserRef, {'followersCount': FieldValue.increment(1)});
     }
+    
+    await batch.commit();
 
-    setState(() => _isProcessingFollow = true);
-
-    final currentUserUid = _auth.currentUser!.uid;
-    final currentUserRef = _db.collection('users').doc(currentUserUid);
-    final profileUserRef = _db.collection('users').doc(widget.userId);
-
-    final followingRef =
-        currentUserRef.collection('following').doc(widget.userId);
-    final followersRef =
-        profileUserRef.collection('followers').doc(currentUserUid);
-
-    try {
-      final WriteBatch batch = _db.batch();
-      final currentUserData = await currentUserRef.get();
-      final currentUserDisplayName =
-          currentUserData.data()?['displayName'] ?? 'Bir Kullanıcı';
-
-      if (_isFollowing) {
-        batch.delete(followingRef);
-        batch.delete(followersRef);
-        batch.update(
-            currentUserRef, {'followingCount': FieldValue.increment(-1)});
-        batch.update(
-            profileUserRef, {'followersCount': FieldValue.increment(-1)});
-      } else {
-        batch.set(followingRef, {
-          'followedAt': FieldValue.serverTimestamp(),
-        });
-        batch.set(followersRef, {
-          'displayName': currentUserDisplayName,
-          'followedAt': FieldValue.serverTimestamp(),
-        });
-        batch.update(
-            currentUserRef, {'followingCount': FieldValue.increment(1)});
-        batch.update(
-            profileUserRef, {'followersCount': FieldValue.increment(1)});
-      }
-
-      await batch.commit();
-
-      if (mounted) {
-        setState(() {
-          _isFollowing = !_isFollowing;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('İşlem başarısız oldu: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isProcessingFollow = false);
-      }
+    if (mounted) {
+      setState(() {
+        _isFollowing = !_isFollowing;
+        _isLoading = false;
+      });
     }
   }
+
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = _auth.currentUser?.uid;
-    final isViewingOwnProfile = currentUserId == widget.userId;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Profil', style: Theme.of(context).textTheme.titleLarge),
+    if (_isLoading) {
+      return const SizedBox(
+        height: 36,
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2.0)),
+      );
+    }
+    return ElevatedButton(
+      onPressed: _toggleFollow,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _isFollowing ? Colors.grey : Colors.blue,
+        foregroundColor: Colors.white,
       ),
-      body: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-        stream: _db.collection('users').doc(widget.userId).snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data?.data() == null) {
-            return const Center(child: Text('Kullanıcı bulunamadı.'));
-          }
-
-          final userData = snapshot.data!.data()!;
-          final theme = Theme.of(context);
-          final displayName = userData['displayName'] as String? ?? 'Kullanıcı';
-          final username = userData['username'] as String?;
-          final photoURL = userData['photoURL'] as String?;
-
-          final voteCount = userData['votesCount'] as int? ?? 0;
-          final commentCount = userData['commentsCount'] as int? ?? 0;
-          final followersCount = userData['followersCount'] as int? ?? 0;
-          final followingCount = userData['followingCount'] as int? ?? 0;
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        CircleAvatar(
-                          radius: 40,
-                          backgroundColor: theme.colorScheme.surface,
-                          backgroundImage:
-                              photoURL != null ? NetworkImage(photoURL) : null,
-                          child: photoURL == null
-                              ? Icon(Icons.person_outline,
-                                  size: 40, color: Colors.grey.shade400)
-                              : null,
-                        ),
-                        const SizedBox(width: 20),
-                        Expanded(
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceAround,
-                            children: [
-                              _buildStatColumn('Oylar', voteCount),
-                              _buildStatColumn('Yorumlar', commentCount),
-                              _buildStatColumn('Takipçi', followersCount),
-                              _buildStatColumn('Takip', followingCount),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      displayName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    if (username != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        '@$username',
-                        style: theme.textTheme.bodyMedium
-                            ?.copyWith(color: Colors.grey[600]),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    if (!isViewingOwnProfile)
-                      SizedBox(
-                        width: double.infinity,
-                        child: _isLoadingFollowStatus
-                            ? const Center(
-                                child: Padding(
-                                padding: EdgeInsets.all(8.0),
-                                child: SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2)),
-                              ))
-                            : _isFollowing
-                                ? OutlinedButton(
-                                    onPressed: _isProcessingFollow
-                                        ? null
-                                        : _toggleFollow,
-                                    child: const Text('Takipten Çıkar'),
-                                  )
-                                : ElevatedButton(
-                                    onPressed: _isProcessingFollow
-                                        ? null
-                                        : _toggleFollow,
-                                    child: const Text('Takip Et'),
-                                  ),
-                      )
-                    else
-                      SizedBox(
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () {},
-                          child: const Text('Profili Düzenle'),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
-                child: Text(
-                  'Son Aktiviteler',
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(fontSize: 20),
-                ),
-              ),
-              // YENİ: Aktivite akışını bu profile bakılan kullanıcı ID'si ile çağırıyoruz
-              Expanded(
-                child: ActivityFeedWidget(
-                  userId: widget.userId,
-                  isOwnProfile: isViewingOwnProfile,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
+      child: Text(_isFollowing ? 'Takipten Çık' : 'Takip Et'),
     );
   }
+}
 
-  Widget _buildStatColumn(String label, int number) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text(
-          number.toString(),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 14, color: Colors.grey),
-        ),
-      ],
+// Bu yardımcı widget, GenericListScreen tarafından kullanılacak.
+// Takipçi ve takip edilen listesindeki her bir kullanıcı satırını çizer.
+class _UserTile extends StatelessWidget {
+  final String userId;
+  const _UserTile({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    // Kullanıcı bilgilerini almak için 'users' koleksiyonuna gidiyoruz.
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          // Veri yüklenirken boş bir satır gösterilebilir.
+          return const ListTile();
+        }
+        final userData = snapshot.data!.data() as Map<String, dynamic>?;
+
+        // userData boşsa veya null ise hiçbir şey gösterme
+        if (userData == null) {
+          return const SizedBox.shrink();
+        }
+        
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundImage: userData['photoURL'] != null
+                ? NetworkImage(userData['photoURL'])
+                : null,
+            child: userData['photoURL'] == null
+                ? const Icon(Icons.person)
+                : null,
+          ),
+          title: Text(userData['username'] ?? 'Kullanıcı'),
+          onTap: () {
+            // Bir kullanıcının üzerine tıklandığında onun profiline git
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => UserProfileScreen(userId: userId),
+            ));
+          },
+        );
+      },
     );
   }
 }

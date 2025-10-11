@@ -21,6 +21,118 @@ class CommentsSheet extends StatefulWidget {
 }
 
 class _CommentsSheetState extends State<CommentsSheet> {
+  final _auth = FirebaseAuth.instance;
+
+  @override
+  Widget build(BuildContext context) {
+    // build metodunu olabildiğince hafif tutuyoruz
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          const _Header(),
+          Expanded(
+            child: _CommentsList(
+              pollId: widget.pollId,
+              scrollController: widget.scrollController,
+              highlightedCommentId: widget.highlightedCommentId,
+            ),
+          ),
+          if (_auth.currentUser != null)
+            _CommentInputField(pollId: widget.pollId),
+        ],
+      ),
+    );
+  }
+}
+
+// Stateless widget'lar kullanarak gereksiz rebuild'leri engelliyoruz
+class _Header extends StatelessWidget {
+  const _Header();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 12, bottom: 20),
+        child: Container(
+          width: 40,
+          height: 5,
+          decoration: BoxDecoration(
+            color: Colors.grey[300],
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CommentsList extends StatelessWidget {
+  const _CommentsList({
+    required this.pollId,
+    this.scrollController,
+    this.highlightedCommentId,
+  });
+
+  final String pollId;
+  final ScrollController? scrollController;
+  final String? highlightedCommentId;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('polls')
+          .doc(pollId)
+          .collection('comments')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(
+            child: Text('Henüz yorum yapılmamış.\nİlk yorumu sen yap!',
+                textAlign: TextAlign.center),
+          );
+        }
+        final comments = snapshot.data!.docs;
+        return ListView.builder(
+          controller: scrollController,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          itemCount: comments.length,
+          itemBuilder: (context, index) {
+            final comment = comments[index];
+            final isHighlighted = comment.id == highlightedCommentId;
+
+            return _CommentTile(
+              pollId: pollId,
+              commentId: comment.id,
+              data: comment.data() as Map<String, dynamic>,
+              isHighlighted: isHighlighted,
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _CommentInputField extends StatefulWidget {
+  const _CommentInputField({required this.pollId});
+
+  final String pollId;
+
+  @override
+  State<_CommentInputField> createState() => _CommentInputFieldState();
+}
+
+class _CommentInputFieldState extends State<_CommentInputField> {
   final _commentCtrl = TextEditingController();
   final _auth = FirebaseAuth.instance;
   final _db = FirebaseFirestore.instance;
@@ -37,12 +149,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
     if (text.isEmpty || _isPosting) return;
 
     final user = _auth.currentUser;
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Yorum yapmak için giriş yapmalısınız.')),
-      );
-      return;
-    }
+    if (user == null) return;
 
     setState(() => _isPosting = true);
 
@@ -61,7 +168,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
         'authorUsername': userData?['username'] ?? 'anonymous',
         'authorPhotoUrl': userData?['photoURL'],
         'createdAt': FieldValue.serverTimestamp(),
-        'likesCount': 0, // Beğeni sayacı eklendi
+        'likesCount': 0,
       });
       writeBatch.update(pollRef, {'commentsCount': FieldValue.increment(1)});
       writeBatch.update(userRef, {'commentsCount': FieldValue.increment(1)});
@@ -81,78 +188,6 @@ class _CommentsSheetState extends State<CommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Theme.of(context).scaffoldBackgroundColor,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(child: _buildCommentsList()),
-          if (_auth.currentUser != null) _buildCommentInputField(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(top: 12, bottom: 20),
-        child: Container(
-          width: 40,
-          height: 5,
-          decoration: BoxDecoration(
-            color: Colors.grey[300],
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCommentsList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _db
-          .collection('polls')
-          .doc(widget.pollId)
-          .collection('comments')
-          .orderBy('createdAt', descending: true)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return const Center(
-            child: Text('Henüz yorum yapılmamış.\nİlk yorumu sen yap!',
-                textAlign: TextAlign.center),
-          );
-        }
-        final comments = snapshot.data!.docs;
-        return ListView.builder(
-          controller: widget.scrollController,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          itemCount: comments.length,
-          itemBuilder: (context, index) {
-            final comment = comments[index];
-            final data = comment.data() as Map<String, dynamic>;
-            final isHighlighted = comment.id == widget.highlightedCommentId;
-
-            return _CommentTile(
-              pollId: widget.pollId,
-              commentId: comment.id,
-              data: data,
-              isHighlighted: isHighlighted,
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildCommentInputField() {
     return Material(
       elevation: 8,
       child: Padding(
@@ -261,7 +296,6 @@ class _CommentTileState extends State<_CommentTile> {
     
     setState(() => _isProcessingLike = true);
 
-    // ---- Optimistic UI Başlangıcı ----
     final previousLikedState = _isLiked;
     final previousLikesCount = _likesCount;
     
@@ -269,8 +303,7 @@ class _CommentTileState extends State<_CommentTile> {
       _isLiked = !_isLiked;
       _isLiked ? _likesCount++ : _likesCount--;
     });
-    // ---- Optimistic UI Bitişi ----
-
+    
     try {
       HapticFeedback.lightImpact();
       final commentRef = _db
@@ -280,15 +313,14 @@ class _CommentTileState extends State<_CommentTile> {
           .doc(widget.commentId);
       final likeRef = commentRef.collection('likes').doc(user.uid);
 
-      if (_isLiked) { // Beğenme işlemi
+      if (_isLiked) {
         await likeRef.set({'likedAt': FieldValue.serverTimestamp()});
         await commentRef.update({'likesCount': FieldValue.increment(1)});
-      } else { // Beğeniyi geri alma işlemi
+      } else {
         await likeRef.delete();
         await commentRef.update({'likesCount': FieldValue.increment(-1)});
       }
     } catch (e) {
-      // Hata olursa, arayüzü eski haline döndür
       setState(() {
         _isLiked = previousLikedState;
         _likesCount = previousLikesCount;
@@ -346,7 +378,6 @@ class _CommentTileState extends State<_CommentTile> {
               ],
             ),
           ),
-          // --- BEĞENME BUTONU VE SAYACI ---
           Column(
             children: [
               IconButton(
